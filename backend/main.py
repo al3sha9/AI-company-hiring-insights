@@ -1,8 +1,9 @@
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 from collections import Counter
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 
 from db import supabase
@@ -18,9 +19,11 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -43,11 +46,15 @@ def health_check():
 
 
 @app.post("/scrape/run")
-def trigger_scrape():
+def trigger_scrape(authorization: str = Header(None)):
     """
     Run all scrapers, upsert roles into Supabase, and log results.
     Each scraper runs independently — a failure in one does not stop the others.
     """
+    scrape_secret = os.getenv("SCRAPE_SECRET")
+    if scrape_secret and authorization != f"Bearer {scrape_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
     scraped_at = datetime.now(timezone.utc).isoformat()
     summary: list[dict] = []
 
