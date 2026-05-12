@@ -1,0 +1,44 @@
+[
+  {
+    "country": "United States",
+    "roles": 1834,
+    "growth": 24,
+    "topCompany": "Nvidia"
+  },
+  {
+    "country": "United Kingdom",
+    "roles": 312,
+    "growth": 31,
+    "topCompany": "Anthropic"
+  },
+  {
+    "country": "France",
+    "roles": 188,
+    "growth": 27,
+    "topCompany": "Mistral"
+  },
+  {
+    "country": "Singapore",
+    "roles": 96,
+    "growth": 22,
+    "topCompany": "Microsoft AI"
+  },
+  {
+    "country": "UAE",
+    "roles": 71,
+    "growth": 35,
+    "topCompany": "CoreWeave"
+  },
+  {
+    "country": "India",
+    "roles": 164,
+    "growth": 18,
+    "topCompany": "Google DeepMind"
+  },
+  {
+    "country": "Canada",
+    "roles": 142,
+    "growth": 16,
+    "topCompany": "OpenAI"
+  }
+]

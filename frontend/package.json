@@ -1,0 +1,26 @@
+{
+  "name": "ai-hiring-signals",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "NEXT_TEST_WASM_DIR=node_modules/@next/swc-wasm-nodejs next dev --webpack",
+    "build": "NEXT_TEST_WASM_DIR=node_modules/@next/swc-wasm-nodejs next build --webpack",
+    "start": "NEXT_TEST_WASM_DIR=node_modules/@next/swc-wasm-nodejs next start",
+    "typecheck": "NEXT_TEST_WASM_DIR=node_modules/@next/swc-wasm-nodejs next typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "16.2.5",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@next/swc-wasm-nodejs": "16.2.5",
+    "@types/node": "25.6.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "autoprefixer": "10.4.21",
+    "postcss": "8.5.3",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.8.3"
+  }
+}
