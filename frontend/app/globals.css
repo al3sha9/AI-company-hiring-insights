@@ -16,10 +16,12 @@ html {
 
 body {
   margin: 0;
-  background: #fbfaf8;
-  color: #121212;
+  background-color: theme('colors.paper');
+  color: theme('colors.ink');
   font-feature-settings: "ss01", "cv01", "cv11";
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 button,
@@ -28,5 +30,6 @@ select {
 }
 
 ::selection {
-  background: rgba(15, 118, 110, 0.14);
+  background: theme('colors.accent / 20%');
+  color: theme('colors.ink');
 }
