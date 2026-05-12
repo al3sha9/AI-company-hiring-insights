@@ -1,16 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { RoleTable } from "@/components/RoleTable";
 import { Sparkline } from "@/components/Sparkline";
 import {
-  companies,
-  getCompany,
   getCompanyNotableRoles,
-  getCompanyRoles,
   getRoleHref,
-  getCompanyTrend,
-  summarizeRoles
 } from "@/lib/data";
+import { getCompanies, getCompany } from "@/lib/api";
 
 type CompanyPageProps = {
   params: Promise<{
@@ -18,41 +13,48 @@ type CompanyPageProps = {
   }>;
 };
 
-export function generateStaticParams() {
-  return companies.map((company) => ({ slug: company.slug }));
+export async function generateStaticParams() {
+  const companies = await getCompanies();
+  return companies.map((company: any) => ({ slug: company.slug }));
 }
 
 export async function generateMetadata({ params }: CompanyPageProps) {
   const { slug } = await params;
-  const company = getCompany(slug);
-
-  if (!company) {
+  try {
+    const company = await getCompany(slug);
+    return {
+      title: `${company.name} - AI Hiring Signals`,
+      description: "Active hiring pattern"
+    };
+  } catch (e) {
     return {
       title: "Company not found"
     };
   }
-
-  return {
-    title: `${company.name} - AI Hiring Signals`,
-    description: company.inferredStrategy
-  };
 }
 
 export default async function CompanyPage({ params }: CompanyPageProps) {
   const { slug } = await params;
-  const company = getCompany(slug);
-
-  if (!company) {
+  
+  let company;
+  try {
+    company = await getCompany(slug);
+  } catch (e) {
     notFound();
   }
 
-  const companyRoles = getCompanyRoles(company.name);
   const notableRoles = getCompanyNotableRoles(company.name);
-  const trend = getCompanyTrend(company.name);
-  const locations = summarizeRoles(companyRoles, "country");
-  const categories = summarizeRoles(companyRoles, "category");
-  const maxLocationCount = Math.max(...locations.map((item) => item.count), 1);
-  const maxCategoryCount = Math.max(...categories.map((item) => item.count), 1);
+  
+  const trendValues = company.snapshots.map((s: any) => s.total_open_roles);
+  const locations = company.countries.map((c: any) => ({ label: c.country, count: c.count }));
+  const categories = company.categories.map((c: any) => ({ label: c.category, count: c.count }));
+  
+  const maxLocationCount = Math.max(...locations.map((item: any) => item.count), 1);
+  const maxCategoryCount = Math.max(...categories.map((item: any) => item.count), 1);
+  
+  const currentOpenRoles = trendValues.length > 0 ? trendValues[trendValues.length - 1] : 0;
+  const previousOpenRoles = trendValues.length > 1 ? trendValues[0] : currentOpenRoles;
+  const wowChange = previousOpenRoles > 0 ? Math.round(((currentOpenRoles - previousOpenRoles) / previousOpenRoles) * 100) : 0;
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-4 py-5 sm:px-6 lg:px-8">
@@ -68,7 +70,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
             <p className="mt-3 max-w-2xl text-base leading-7 text-muted">
               Inferred strategy:{" "}
               <span className="font-medium text-ink">
-                {company.inferredStrategy}
+                Active hiring
               </span>
             </p>
           </div>
@@ -77,16 +79,16 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
               12-week open roles trend
             </div>
             <div className="mt-3 h-24">
-              {trend ? <Sparkline values={trend.values} /> : null}
+              {trendValues.length > 0 ? <Sparkline values={trendValues} /> : null}
             </div>
           </div>
         </div>
       </header>
 
       <section className="grid gap-3 py-5 sm:grid-cols-3">
-        <Stat label="Open roles" value={company.openRoles.toLocaleString()} />
-        <Stat label="WoW change" value={`+${company.wowChange}%`} />
-        <Stat label="MoM change" value={`+${company.momChange}%`} />
+        <Stat label="Open roles" value={currentOpenRoles.toLocaleString()} />
+        <Stat label="WoW change" value={`+${wowChange}%`} />
+        <Stat label="MoM change" value={`+${wowChange}%`} />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[0.9fr_0.9fr_1.2fr]">
@@ -137,7 +139,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
               </p>
             </div>
             <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-800">
-              {company.signal}
+              Active
             </span>
           </div>
           <div className="mt-4 divide-y divide-line">
@@ -172,10 +174,10 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
         <h2 className="text-base font-semibold text-ink">Hiring signal</h2>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
           {company.name} is showing a clear{" "}
-          <span className="font-medium text-ink">{company.signal}</span> pattern:
-          hiring is most visible in {company.topGrowingCategory.toLowerCase()},
-          with the strongest location signal in {company.topHiringLocation}.
-          Notable new role: {company.notableRole}.
+          <span className="font-medium text-ink">Active</span> pattern:
+          hiring is most visible in {categories[0]?.label || 'Engineering'},
+          with the strongest location signal in {locations[0]?.label || 'Remote'}.
+          Notable new role: {notableRoles[0]?.title || 'N/A'}.
         </p>
       </section>
 
@@ -185,10 +187,6 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
             <h2 className="text-base font-semibold text-ink">
               All {company.name} roles
             </h2>
-            <p className="mt-1 text-xs text-muted">
-              Mock inventory behind the {company.openRoles.toLocaleString()} prototype
-              open roles count.
-            </p>
           </div>
           <Link
             className="shrink-0 text-xs font-medium text-accent hover:text-ink"
@@ -197,7 +195,33 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
             Open filtered view
           </Link>
         </div>
-        <RoleTable roles={companyRoles} />
+        
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+            <thead>
+              <tr className="border-b border-line text-xs uppercase tracking-[0.08em] text-muted">
+                <th className="px-4 py-3 font-medium">Role</th>
+                <th className="px-4 py-3 font-medium">Category</th>
+                <th className="px-4 py-3 font-medium">Location</th>
+                <th className="px-4 py-3 font-medium">Seniority</th>
+              </tr>
+            </thead>
+            <tbody>
+              {company.roles?.map((role: any, idx: number) => (
+                <tr className="border-b border-line last:border-0 hover:bg-stone-50/70" key={idx}>
+                  <td className="px-4 py-3 font-medium">
+                    <a href={role.source_url} target="_blank" rel="noreferrer" className="text-ink hover:underline">
+                      {role.title}
+                    </a>
+                  </td>
+                  <td className="px-4 py-3 text-muted">{role.category}</td>
+                  <td className="px-4 py-3 text-muted">{role.location || role.country || "Unknown"}</td>
+                  <td className="px-4 py-3 text-muted">{role.seniority}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
   );

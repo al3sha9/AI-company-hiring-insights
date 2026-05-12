@@ -1,7 +1,8 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from collections import Counter
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from db import supabase
@@ -124,9 +125,120 @@ def trigger_scrape():
 
 @app.get("/companies")
 def get_companies():
-    return []
+    companies_res = supabase.table("companies").select("*").execute()
+    companies = companies_res.data
+    
+    snapshots_res = supabase.table("role_snapshots").select("*").order("scraped_at", desc=True).execute()
+    snapshots = snapshots_res.data
+    
+    now = datetime.now(timezone.utc)
+    target_date = now - timedelta(days=14)
+    
+    result = []
+    for comp in companies:
+        slug = comp["slug"]
+        comp_snaps = [s for s in snapshots if s["company_slug"] == slug]
+        
+        if not comp_snaps:
+            result.append({
+                "slug": slug,
+                "name": comp["name"],
+                "current_roles": 0,
+                "previous_roles": 0,
+                "change": 0,
+                "change_pct": 0.0,
+                "scraped_at": None
+            })
+            continue
+            
+        latest_snap = comp_snaps[0]
+        current_roles = latest_snap["total_open_roles"]
+        scraped_at_str = latest_snap["scraped_at"]
+        
+        closest_snap = None
+        min_diff = float("inf")
+        
+        for s in comp_snaps:
+            try:
+                # Handle ISO format parsing
+                s_date = datetime.fromisoformat(s["scraped_at"].replace("Z", "+00:00"))
+                diff = abs((s_date - target_date).total_seconds())
+                if diff < min_diff:
+                    min_diff = diff
+                    closest_snap = s
+            except ValueError:
+                continue
+                
+        previous_roles = closest_snap["total_open_roles"] if closest_snap else current_roles
+        
+        change = current_roles - previous_roles
+        change_pct = 0.0
+        if previous_roles > 0:
+            change_pct = round((change / previous_roles) * 100, 1)
+            
+        result.append({
+            "slug": slug,
+            "name": comp["name"],
+            "current_roles": current_roles,
+            "previous_roles": previous_roles,
+            "change": change,
+            "change_pct": change_pct,
+            "scraped_at": scraped_at_str
+        })
+        
+    return result
 
 
 @app.get("/company/{slug}")
 def get_company(slug: str):
-    return {}
+    comp_res = supabase.table("companies").select("*").eq("slug", slug).execute()
+    if not comp_res.data:
+        raise HTTPException(status_code=404, detail="Company not found")
+        
+    comp = comp_res.data[0]
+    
+    snaps_res = supabase.table("role_snapshots").select("scraped_at, total_open_roles").eq("company_slug", slug).order("scraped_at").execute()
+    
+    roles_res = supabase.table("roles").select("*").eq("company_slug", slug).execute()
+    roles = roles_res.data
+    
+    categories = Counter()
+    countries = Counter()
+    
+    for r in roles:
+        cat = r.get("category") or "Uncategorized"
+        country = r.get("country") or "Unknown"
+        categories[cat] += 1
+        countries[country] += 1
+        
+    categories_list = [{"category": k, "count": v} for k, v in categories.items()]
+    countries_list = [{"country": k, "count": v} for k, v in countries.items()]
+    
+    categories_list.sort(key=lambda x: x["count"], reverse=True)
+    countries_list.sort(key=lambda x: x["count"], reverse=True)
+    
+    sorted_roles = sorted(roles, key=lambda x: x.get("last_seen_at") or "", reverse=True)[:50]
+    
+    return {
+        "slug": comp["slug"],
+        "name": comp["name"],
+        "snapshots": snaps_res.data,
+        "categories": categories_list,
+        "countries": countries_list,
+        "roles": sorted_roles
+    }
+
+
+@app.get("/categories")
+def get_categories():
+    roles_res = supabase.table("roles").select("category").execute()
+    
+    categories = Counter()
+    for r in roles_res.data:
+        cat = r.get("category") or "Uncategorized"
+        categories[cat] += 1
+        
+    result = [{"category": k, "count": v} for k, v in categories.items()]
+    result.sort(key=lambda x: x["count"], reverse=True)
+    
+    return result

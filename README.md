@@ -53,4 +53,3 @@ The project is structured into two main components:
    ```bash
    npm run dev
    ```
-# AI-company-hiring-insights
