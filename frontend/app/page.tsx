@@ -149,9 +149,19 @@ export default async function Home({ searchParams }: HomeProps) {
     <main className="mx-auto min-h-screen max-w-8xl px-4 py-5 sm:px-6 lg:px-10 xl:px-14">
       <header className="flex flex-col gap-5 border-b border-line pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-2xl">
-          <h1 className="text-2xl font-semibold tracking-normal text-ink">
-            AI Hiring Signals
-          </h1>
+          <div className="flex items-baseline gap-2.5">
+            <h1 className="text-2xl font-semibold tracking-normal text-ink">
+              AI Hiring Signals
+            </h1>
+            <a 
+              href="https://100xbetter.ai" 
+              target="_blank" 
+              rel="noreferrer" 
+              className="text-sm font-medium text-subtle hover:text-ink transition-colors"
+            >
+              by 100xbetter.ai
+            </a>
+          </div>
           <p className="mt-2 text-sm leading-6 text-muted">
             Track where AI companies are hiring, what roles are growing, and
             what strategy it signals.
