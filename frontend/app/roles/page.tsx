@@ -28,7 +28,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
   ].filter(Boolean);
 
   return (
-    <main className="mx-auto min-h-screen max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+    <main className="mx-auto min-h-screen max-w-8xl px-4 py-5 sm:px-6 lg:px-10 xl:px-14">
       <header className="border-b border-line pb-5">
         <Link className="text-sm font-medium text-muted hover:text-ink" href="/">
           Back to dashboard
@@ -45,7 +45,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
             </p>
           </div>
           <Link
-            className="w-fit rounded-lg border border-line bg-white px-3 py-2 text-xs font-medium text-ink hover:bg-stone-50"
+            className="w-fit rounded-lg border border-line bg-paper px-3 py-2 text-xs font-medium text-ink hover:bg-selected"
             href="/roles"
           >
             Clear filters
@@ -53,7 +53,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
         </div>
       </header>
 
-      <section className="grid gap-3 py-5 sm:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 py-5 sm:grid-cols-4">
         <Stat label="Matching roles" value={filteredRoles.length.toLocaleString()} />
         <Stat
           label="Companies"
@@ -69,7 +69,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
         />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Breakdown
           activeFilters={filters}
           items={companyBreakdown}

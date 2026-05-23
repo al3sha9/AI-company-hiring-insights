@@ -1,37 +1,65 @@
 import Link from "next/link";
 import { MetricCard } from "@/components/MetricCard";
-import {
-  biggestLocationSpike,
-  getRoleHref,
-} from "@/lib/data";
+import { FilterBar } from "@/components/FilterBar";
+import { getRoleHref } from "@/lib/data";
 import { getCompanies, getCategories, getLocations } from "@/lib/api";
 
-const lastUpdated = new Date().toLocaleDateString("en-US", { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
+type HomeProps = {
+  searchParams: Promise<{
+    company?: string;
+    country?: string;
+    range?: string;
+  }>;
+};
 
-export default async function Home() {
+export default async function Home({ searchParams }: HomeProps) {
+  const filters = await searchParams;
   const apiCompanies = await getCompanies();
-  
+
   // Compute overall metrics
   const totalOpenRoles = apiCompanies.reduce((acc: number, c: any) => acc + c.current_roles, 0);
   const previousOpenRoles = apiCompanies.reduce((acc: number, c: any) => acc + c.previous_roles, 0);
   const totalChange = totalOpenRoles - previousOpenRoles;
+  const hasHistory = apiCompanies.some((c: any) => c.previous_roles !== c.current_roles || c.change !== 0);
   const weightedWowChange = previousOpenRoles > 0 ? ((totalChange / previousOpenRoles) * 100).toFixed(1) : 0;
-  
+  const wowChangeLabel = !hasHistory
+    ? "Needs 2 scrapes ≥7 days apart"
+    : totalChange >= 0 ? `+${totalChange} roles vs prior period` : `${totalChange} roles vs prior period`;
+  const totalRolesChange = totalChange === 0 && !hasHistory
+    ? "Refresh after 7+ days for change data"
+    : totalChange > 0 ? `+${totalChange} since last period` : totalChange < 0 ? `${totalChange} since last period` : "No change since last scrape";
+
+  // Use the real scraped_at from the API rather than build time
+  const lastUpdated = apiCompanies.length > 0 && apiCompanies[0].scraped_at
+    ? new Date(apiCompanies[0].scraped_at).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZoneName: "short",
+      })
+    : "Not yet scraped";
+
   // Find fastest growing
   const fastestGrowingCompany = [...apiCompanies].sort((a, b) => b.change_pct - a.change_pct)[0] || apiCompanies[0] || { name: 'N/A', slug: '', change_pct: 0 };
 
-  const rankedCompanies = [...apiCompanies].sort(
+  let rankedCompanies = [...apiCompanies].sort(
     (a, b) => b.change_pct - a.change_pct
-  ).map(c => ({
+  ).map((c) => ({
     slug: c.slug,
     name: c.name,
     openRoles: c.current_roles,
     wowChange: c.change_pct,
-    momChange: c.change_pct, // API only gives wow right now
-    topGrowingCategory: "Engineering", // placeholder
-    topHiringLocation: "Remote", // placeholder
+    topGrowingCategory: "Engineering", // placeholder until per-company category is on list endpoint
+    topHiringLocation: "Remote", // placeholder until per-company location is on list endpoint
     signal: "Active", // placeholder
   }));
+
+  // Apply company filter from URL search params
+  if (filters.company) {
+    rankedCompanies = rankedCompanies.filter((c) => c.name === filters.company);
+  }
 
   const apiCategories = await getCategories();
   const maxCategoryGrowth = Math.max(...apiCategories.map((item) => item.growth), 1);
@@ -39,9 +67,18 @@ export default async function Home() {
 
   const apiLocations = await getLocations();
   const maxLocationRoles = Math.max(...apiLocations.map((location) => location.roles), 1);
+  const biggestLocation = apiLocations[0] || { country: 'N/A', roles: 0, topCompany: 'N/A' };
+
+  // Country list for the filter dropdown
+  const countries = apiLocations.map((l) => l.country);
+
+  // Filter locations by selected country
+  const displayedLocations = filters.country
+    ? apiLocations.filter((l) => l.country === filters.country)
+    : apiLocations;
 
   return (
-    <main className="mx-auto min-h-screen max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+    <main className="mx-auto min-h-screen max-w-8xl px-4 py-5 sm:px-6 lg:px-10 xl:px-14">
       <header className="flex flex-col gap-5 border-b border-line pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-2xl">
           <div className="flex items-center gap-3">
@@ -54,83 +91,50 @@ export default async function Home() {
             strategy it signals.
           </p>
           <p className="mt-2 text-xs text-muted">
-            Prototype data last updated {lastUpdated}. Not live career-page counts.
+            Data last scraped {lastUpdated}.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex overflow-hidden rounded-lg border border-line bg-white">
-            {["7D", "30D", "90D"].map((range) => (
-              <button
-                className={
-                  range === "7D"
-                    ? "bg-ink px-3 py-2 text-xs font-medium text-white"
-                    : "px-3 py-2 text-xs font-medium text-muted hover:bg-stone-50"
-                }
-                key={range}
-                type="button"
-              >
-                {range}
-              </button>
-            ))}
-          </div>
-          <select
-            aria-label="Company filter"
-            className="h-9 rounded-lg border border-line bg-white px-3 text-xs font-medium text-ink outline-none"
-            defaultValue="All companies"
-          >
-            <option>All companies</option>
-            {apiCompanies.map((company: any) => (
-              <option key={company.slug}>{company.name}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Location filter"
-            className="h-9 rounded-lg border border-line bg-white px-3 text-xs font-medium text-ink outline-none"
-            defaultValue="All locations"
-          >
-            <option>All locations</option>
-            {apiLocations.map((location) => (
-              <option key={location.country}>{location.country}</option>
-            ))}
-          </select>
-        </div>
+        <FilterBar
+          companies={apiCompanies.map((c: any) => ({ slug: c.slug, name: c.name }))}
+          countries={countries}
+        />
       </header>
 
       <section className="grid gap-3 py-5 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard
-          change="Available after second scrape run"
-          detail="Tracked across 12 major AI companies."
+          change={totalRolesChange}
+          detail={`Tracked across ${apiCompanies.length} AI companies.`}
           href="/roles"
           label="Total open roles"
           value={totalOpenRoles.toLocaleString()}
         />
         <MetricCard
-          change="Available after second scrape run"
+          change={wowChangeLabel}
           detail="Momentum is concentrated in infra, data center, and robotics."
           label="Week-over-week change"
-          value={`+${weightedWowChange}%`}
+          value={hasHistory ? `${Number(weightedWowChange) >= 0 ? '+' : ''}${weightedWowChange}%` : '—'}
         />
         <MetricCard
-          change="Available after second scrape run"
-          detail={`${fastestGrowingCompany.name} is expanding fastest this week.`}
+          change={fastestGrowingCompany.change_pct > 0 ? `+${fastestGrowingCompany.change_pct}% this period` : "Monitoring…"}
+          detail={`${fastestGrowingCompany.name} leads open role count this week.`}
           href={`/company/${fastestGrowingCompany.slug}`}
           label="Fastest growing company"
           value={fastestGrowingCompany.name}
         />
         <MetricCard
-          change="Available after second scrape run"
+          change={fastestGrowingCategory.growth > 0 ? `${fastestGrowingCategory.growth} open roles` : "Monitoring…"}
           detail="Growth points to capacity constraints becoming strategic."
           href={getRoleHref({ category: fastestGrowingCategory.category })}
           label="Fastest growing role"
           value={fastestGrowingCategory.category}
         />
         <MetricCard
-          change="Available after second scrape run"
-          detail={`${biggestLocationSpike.topCompany} is driving the sharpest country move.`}
-          href={getRoleHref({ country: biggestLocationSpike.country })}
-          label="Biggest location spike"
-          value={biggestLocationSpike.country}
+          change={biggestLocation.roles > 0 ? `${biggestLocation.roles} open roles` : "Monitoring…"}
+          detail={`${biggestLocation.topCompany} is the top hiring company here.`}
+          href={getRoleHref({ country: biggestLocation.country })}
+          label="Top hiring location"
+          value={biggestLocation.country}
         />
       </section>
 
@@ -150,13 +154,12 @@ export default async function Home() {
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[700px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-line text-xs uppercase tracking-[0.08em] text-muted">
                   <th className="px-4 py-3 font-medium">Company</th>
                   <th className="px-4 py-3 font-medium">Open roles</th>
                   <th className="px-4 py-3 font-medium">WoW change</th>
-                  <th className="px-4 py-3 font-medium">MoM change</th>
                   <th className="px-4 py-3 font-medium">Top growing category</th>
                   <th className="px-4 py-3 font-medium">Top hiring location</th>
                   <th className="px-4 py-3 font-medium">Signal</th>
@@ -192,10 +195,7 @@ export default async function Home() {
                       )}
                     </td>
                     <td className="px-4 py-3 font-medium tabular-nums text-accent">
-                      +{company.wowChange}%
-                    </td>
-                    <td className="px-4 py-3 tabular-nums text-ink">
-                      +{company.momChange}%
+                      {company.wowChange >= 0 ? "+" : ""}{company.wowChange}%
                     </td>
                     <td className="px-4 py-3">
                       <Link
@@ -258,7 +258,7 @@ export default async function Home() {
           <div className="mt-4 space-y-3">
             {apiCategories.map((item) => (
               <Link
-                className="grid grid-cols-[150px_1fr_48px] items-center gap-3 text-sm"
+                className="grid grid-cols-[minmax(0,140px)_1fr_44px] items-center gap-3 text-sm sm:grid-cols-[160px_1fr_48px]"
                 href={getRoleHref({ category: item.category })}
                 key={item.category}
               >
@@ -282,7 +282,7 @@ export default async function Home() {
         <div className="rounded-lg border border-line bg-white p-4 shadow-hairline">
           <h2 className="text-base font-semibold text-ink">Top hiring locations</h2>
           <div className="mt-4 divide-y divide-line">
-            {apiLocations.map((location, index) => (
+            {displayedLocations.map((location, index) => (
               (() => {
                 const topCompany = apiCompanies.find(
                   (company: any) => company.name === location.topCompany

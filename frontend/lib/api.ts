@@ -14,48 +14,65 @@ export async function getCompany(slug: string) {
 
 export async function getCategories() {
   const companies = await getCompanies();
+
+  // Fetch all company details in parallel (was sequential N+1 before)
+  const allDetails = await Promise.all(
+    companies.map((comp: any) => getCompany(comp.slug).catch(() => null))
+  );
+
   const categoryMap = new Map<string, number>();
-  
-  for (const comp of companies) {
-    try {
-      const details = await getCompany(comp.slug);
-      for (const cat of details.categories || []) {
-        categoryMap.set(cat.category, (categoryMap.get(cat.category) || 0) + cat.count);
-      }
-    } catch(e) {
-      // Ignore errors for individual companies
+  for (const details of allDetails) {
+    if (!details) continue;
+    for (const cat of details.categories || []) {
+      categoryMap.set(cat.category, (categoryMap.get(cat.category) || 0) + cat.count);
     }
   }
-  
+
   const result = Array.from(categoryMap.entries()).map(([category, growth]) => ({
     category,
     growth,
   }));
-  
+
   return result.sort((a, b) => b.growth - a.growth);
 }
 
 export async function getLocations() {
   const companies = await getCompanies();
-  const locationMap = new Map<string, number>();
-  
-  for (const comp of companies) {
-    try {
-      const details = await getCompany(comp.slug);
-      for (const loc of details.countries || []) {
-        locationMap.set(loc.country, (locationMap.get(loc.country) || 0) + loc.count);
+
+  // Fetch all company details in parallel (was sequential N+1 before)
+  const allDetails = await Promise.all(
+    companies.map((comp: any) =>
+      getCompany(comp.slug)
+        .then((details) => ({ details, compName: comp.name }))
+        .catch(() => null)
+    )
+  );
+
+  const locationMap = new Map<string, { roles: number; topCompany: string; topCount: number }>();
+
+  for (const entry of allDetails) {
+    if (!entry) continue;
+    const { details, compName } = entry;
+    for (const loc of details.countries || []) {
+      const existing = locationMap.get(loc.country);
+      if (!existing) {
+        locationMap.set(loc.country, { roles: loc.count, topCompany: compName, topCount: loc.count });
+      } else {
+        existing.roles += loc.count;
+        if (loc.count > existing.topCount) {
+          existing.topCompany = compName;
+          existing.topCount = loc.count;
+        }
       }
-    } catch(e) {
-      // Ignore errors for individual companies
     }
   }
-  
-  const result = Array.from(locationMap.entries()).map(([country, roles]) => ({
+
+  const result = Array.from(locationMap.entries()).map(([country, data]) => ({
     country,
-    roles,
-    growth: 0, 
-    topCompany: "Various" 
+    roles: data.roles,
+    growth: 0,
+    topCompany: data.topCompany,
   }));
-  
+
   return result.sort((a, b) => b.roles - a.roles);
 }

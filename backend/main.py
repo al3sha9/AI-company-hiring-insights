@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime, timezone, timedelta
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,48 +46,42 @@ def health_check():
     return {"status": "ok"}
 
 
-@app.post("/scrape/run")
-def trigger_scrape(authorization: str = Header(None)):
+def _scrape_one(company_slug: str, scraper_module, scraped_at: str) -> dict:
     """
-    Run all scrapers, upsert roles into Supabase, and log results.
-    Each scraper runs independently — a failure in one does not stop the others.
+    Run a single scraper, upsert results, and write logs.
+    Returns a summary dict. Designed to be called from a thread pool.
     """
-    scrape_secret = os.getenv("SCRAPE_SECRET")
-    if scrape_secret and authorization != f"Bearer {scrape_secret}":
-        raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    scraped_at = datetime.now(timezone.utc).isoformat()
-    summary: list[dict] = []
+    logger.info("Starting scrape for: %s", company_slug)
+    try:
+        roles = scraper_module.scrape()
+        roles_found = len(roles)
 
-    for company_slug, scraper_module in SCRAPERS:
-        logger.info("Starting scrape for: %s", company_slug)
-        try:
-            roles = scraper_module.scrape()
-            roles_found = len(roles)
+        # Upsert each role into the roles table
+        if roles:
+            rows = [
+                {
+                    "company_slug": company_slug,
+                    "title": role.title,
+                    "category": role.category,
+                    "location": role.location,
+                    "country": role.country,
+                    "seniority": role.seniority,
+                    "work_mode": role.work_mode,
+                    "source_url": role.source_url,
+                    "first_seen_at": scraped_at,
+                    "last_seen_at": scraped_at,
+                }
+                for role in roles
+            ]
+            supabase.table("roles").upsert(
+                rows,
+                on_conflict="company_slug,source_url",
+            ).execute()
 
-            # Upsert each role into the roles table
-            if roles:
-                rows = [
-                    {
-                        "company_slug": company_slug,
-                        "title": role.title,
-                        "category": role.category,
-                        "location": role.location,
-                        "country": role.country,
-                        "seniority": role.seniority,
-                        "work_mode": role.work_mode,
-                        "source_url": role.source_url,
-                        "first_seen_at": scraped_at,
-                        "last_seen_at": scraped_at,
-                    }
-                    for role in roles
-                ]
-                supabase.table("roles").upsert(
-                    rows,
-                    on_conflict="company_slug,source_url",
-                ).execute()
-
-            # Insert snapshot
+        # Only insert a snapshot when we actually fetched data.
+        # Writing a 0-role snapshot on a transient network error would
+        # corrupt the trend chart and WoW change calculation.
+        if roles_found > 0:
             supabase.table("role_snapshots").insert(
                 {
                     "company_slug": company_slug,
@@ -95,37 +90,61 @@ def trigger_scrape(authorization: str = Header(None)):
                 }
             ).execute()
 
-            # Log success
+        # Log success
+        supabase.table("scrape_logs").insert(
+            {
+                "company_slug": company_slug,
+                "status": "success",
+                "roles_found": roles_found,
+                "scraped_at": scraped_at,
+            }
+        ).execute()
+
+        logger.info("[%s] Done — %d roles", company_slug, roles_found)
+        return {"company": company_slug, "status": "success", "roles_found": roles_found}
+
+    except Exception as exc:
+        logger.error("[%s] Scraper failed: %s", company_slug, exc)
+
+        # Log failure — best-effort, don't let a log write crash the thread
+        try:
             supabase.table("scrape_logs").insert(
                 {
                     "company_slug": company_slug,
-                    "status": "success",
-                    "roles_found": roles_found,
+                    "status": "error",
+                    "roles_found": 0,
                     "scraped_at": scraped_at,
+                    "error_message": str(exc),
                 }
             ).execute()
+        except Exception as log_exc:
+            logger.error("[%s] Failed to write error log: %s", company_slug, log_exc)
 
-            logger.info("[%s] Done — %d roles", company_slug, roles_found)
-            summary.append({"company": company_slug, "status": "success", "roles_found": roles_found})
+        return {"company": company_slug, "status": "error", "error": str(exc)}
 
-        except Exception as exc:
-            logger.error("[%s] Scraper failed: %s", company_slug, exc)
 
-            # Log failure — best-effort, don't let a log write crash the loop
-            try:
-                supabase.table("scrape_logs").insert(
-                    {
-                        "company_slug": company_slug,
-                        "status": "error",
-                        "roles_found": 0,
-                        "scraped_at": scraped_at,
-                        "error_message": str(exc),
-                    }
-                ).execute()
-            except Exception as log_exc:
-                logger.error("[%s] Failed to write error log: %s", company_slug, log_exc)
+@app.post("/scrape/run")
+def trigger_scrape(authorization: str = Header(None)):
+    """
+    Run all scrapers in parallel, upsert roles into Supabase, and log results.
+    Each scraper runs in its own thread — a failure in one does not stop the others.
+    All scrapers run concurrently so total time ≈ slowest single scraper (~30s),
+    not the sum of all scrapers.
+    """
+    scrape_secret = os.getenv("SCRAPE_SECRET")
+    if scrape_secret and authorization != f"Bearer {scrape_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
-            summary.append({"company": company_slug, "status": "error", "error": str(exc)})
+    scraped_at = datetime.now(timezone.utc).isoformat()
+    summary: list[dict] = []
+
+    with ThreadPoolExecutor(max_workers=len(SCRAPERS)) as executor:
+        futures = {
+            executor.submit(_scrape_one, slug, module, scraped_at): slug
+            for slug, module in SCRAPERS
+        }
+        for future in as_completed(futures):
+            summary.append(future.result())
 
     return {"scraped_at": scraped_at, "results": summary}
 
@@ -134,18 +153,26 @@ def trigger_scrape(authorization: str = Header(None)):
 def get_companies():
     companies_res = supabase.table("companies").select("*").execute()
     companies = companies_res.data
-    
-    snapshots_res = supabase.table("role_snapshots").select("*").order("scraped_at", desc=True).execute()
+
+    # Fetch recent snapshots only — avoid loading the entire history table.
+    # Ordered desc so index 0 is always the most recent snapshot per company.
+    snapshots_res = (
+        supabase.table("role_snapshots")
+        .select("*")
+        .order("scraped_at", desc=True)
+        .limit(500)
+        .execute()
+    )
     snapshots = snapshots_res.data
-    
+
     now = datetime.now(timezone.utc)
     target_date = now - timedelta(days=14)
-    
+
     result = []
     for comp in companies:
         slug = comp["slug"]
         comp_snaps = [s for s in snapshots if s["company_slug"] == slug]
-        
+
         if not comp_snaps:
             result.append({
                 "slug": slug,
@@ -157,32 +184,36 @@ def get_companies():
                 "scraped_at": None
             })
             continue
-            
+
         latest_snap = comp_snaps[0]
         current_roles = latest_snap["total_open_roles"]
         scraped_at_str = latest_snap["scraped_at"]
-        
-        closest_snap = None
-        min_diff = float("inf")
-        
-        for s in comp_snaps:
+
+        # Exclude the latest snapshot from the comparison pool so we don't
+        # compare a company to itself when there's only one scrape run.
+        comparison_snaps = comp_snaps[1:]
+        previous_roles = current_roles  # default: no history yet
+
+        if comparison_snaps:
             try:
-                # Handle ISO format parsing
-                s_date = datetime.fromisoformat(s["scraped_at"].replace("Z", "+00:00"))
-                diff = abs((s_date - target_date).total_seconds())
-                if diff < min_diff:
-                    min_diff = diff
-                    closest_snap = s
-            except ValueError:
-                continue
-                
-        previous_roles = closest_snap["total_open_roles"] if closest_snap else current_roles
-        
+                closest_snap = min(
+                    comparison_snaps,
+                    key=lambda s: abs(
+                        (
+                            datetime.fromisoformat(s["scraped_at"].replace("Z", "+00:00"))
+                            - target_date
+                        ).total_seconds()
+                    ),
+                )
+                previous_roles = closest_snap["total_open_roles"]
+            except (ValueError, KeyError):
+                pass
+
         change = current_roles - previous_roles
         change_pct = 0.0
         if previous_roles > 0:
             change_pct = round((change / previous_roles) * 100, 1)
-            
+
         result.append({
             "slug": slug,
             "name": comp["name"],
@@ -192,7 +223,7 @@ def get_companies():
             "change_pct": change_pct,
             "scraped_at": scraped_at_str
         })
-        
+
     return result
 
 
@@ -201,31 +232,38 @@ def get_company(slug: str):
     comp_res = supabase.table("companies").select("*").eq("slug", slug).execute()
     if not comp_res.data:
         raise HTTPException(status_code=404, detail="Company not found")
-        
+
     comp = comp_res.data[0]
-    
-    snaps_res = supabase.table("role_snapshots").select("scraped_at, total_open_roles").eq("company_slug", slug).order("scraped_at").execute()
-    
+
+    snaps_res = (
+        supabase.table("role_snapshots")
+        .select("scraped_at, total_open_roles")
+        .eq("company_slug", slug)
+        .order("scraped_at")
+        .limit(100)
+        .execute()
+    )
+
     roles_res = supabase.table("roles").select("*").eq("company_slug", slug).execute()
     roles = roles_res.data
-    
+
     categories = Counter()
     countries = Counter()
-    
+
     for r in roles:
         cat = r.get("category") or "Uncategorized"
         country = r.get("country") or "Unknown"
         categories[cat] += 1
         countries[country] += 1
-        
+
     categories_list = [{"category": k, "count": v} for k, v in categories.items()]
     countries_list = [{"country": k, "count": v} for k, v in countries.items()]
-    
+
     categories_list.sort(key=lambda x: x["count"], reverse=True)
     countries_list.sort(key=lambda x: x["count"], reverse=True)
-    
+
     sorted_roles = sorted(roles, key=lambda x: x.get("last_seen_at") or "", reverse=True)[:50]
-    
+
     return {
         "slug": comp["slug"],
         "name": comp["name"],
@@ -239,13 +277,13 @@ def get_company(slug: str):
 @app.get("/categories")
 def get_categories():
     roles_res = supabase.table("roles").select("category").execute()
-    
+
     categories = Counter()
     for r in roles_res.data:
         cat = r.get("category") or "Uncategorized"
         categories[cat] += 1
-        
+
     result = [{"category": k, "count": v} for k, v in categories.items()]
     result.sort(key=lambda x: x["count"], reverse=True)
-    
+
     return result

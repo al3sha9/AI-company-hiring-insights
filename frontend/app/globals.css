@@ -12,21 +12,59 @@
 
 html {
   scroll-behavior: smooth;
+  font-size: 13px; /* base size */
 }
 
 body {
   margin: 0;
-  background: #fbfaf8;
-  color: #121212;
-  font-feature-settings: "ss01", "cv01", "cv11";
+  background: #F5F5F5;
+  color: #292929;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
+/* SF Pro feature flags */
+@supports (font: -apple-system-body) {
+  body {
+    font: -apple-system-body;
+    font-size: 13px;
+    color: #292929;
+  }
+}
+
 button,
-select {
+select,
+input,
+textarea {
   font: inherit;
 }
 
+/* Medium weight utility */
+.font-medium {
+  font-weight: 500;
+}
+
 ::selection {
-  background: rgba(15, 118, 110, 0.14);
+  background: rgba(41, 41, 41, 0.1);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #F2F2F2;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #D4D4D4;
 }

@@ -36,7 +36,7 @@ def scrape() -> list[RoleSchema]:
         logger.error("[%s] Failed to fetch Ashby jobs: %s", COMPANY_SLUG, exc)
         return []
 
-    job_postings = data.get("jobs", [])
+    job_postings = data.get("jobPostings", [])
     logger.info("[%s] Fetched %d postings", COMPANY_SLUG, len(job_postings))
 
     roles: list[RoleSchema] = []

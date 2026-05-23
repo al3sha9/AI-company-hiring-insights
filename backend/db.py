@@ -7,4 +7,10 @@ load_dotenv()
 url: str = os.environ.get("SUPABASE_URL", "")
 key: str = os.environ.get("SUPABASE_KEY", "")
 
-supabase: Client = create_client(url, key) if url and key else None
+if not url or not key:
+    raise RuntimeError(
+        "SUPABASE_URL and SUPABASE_KEY must be set. "
+        "Copy .env.example to .env and fill in your credentials."
+    )
+
+supabase: Client = create_client(url, key)

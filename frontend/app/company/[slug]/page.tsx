@@ -57,7 +57,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
   const wowChange = previousOpenRoles > 0 ? Math.round(((currentOpenRoles - previousOpenRoles) / previousOpenRoles) * 100) : 0;
 
   return (
-    <main className="mx-auto min-h-screen max-w-6xl px-4 py-5 sm:px-6 lg:px-8">
+    <main className="mx-auto min-h-screen max-w-8xl px-4 py-5 sm:px-6 lg:px-10 xl:px-14">
       <header className="border-b border-line pb-5">
         <Link className="text-sm font-medium text-muted hover:text-ink" href="/">
           Back to dashboard
@@ -85,13 +85,13 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
         </div>
       </header>
 
-      <section className="grid gap-3 py-5 sm:grid-cols-3">
+      <section className="grid grid-cols-2 gap-3 py-5 sm:grid-cols-3">
         <Stat label="Open roles" value={currentOpenRoles.toLocaleString()} />
-        <Stat label="WoW change" value={`+${wowChange}%`} />
-        <Stat label="MoM change" value={`+${wowChange}%`} />
+        <Stat label="WoW change" value={trendValues.length > 1 ? `${wowChange >= 0 ? "+" : ""}${wowChange}%` : "—"} />
+        <Stat label="Roles on record" value={(company.roles?.length ?? 0).toLocaleString()} />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[0.9fr_0.9fr_1.2fr]">
+      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-[0.9fr_0.9fr_1.2fr]">
         <div className="rounded-lg border border-line bg-white p-4 shadow-hairline">
           <h2 className="text-base font-semibold text-ink">Location breakdown</h2>
           <div className="mt-4 space-y-3">
@@ -208,7 +208,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
             </thead>
             <tbody>
               {company.roles?.map((role: any, idx: number) => (
-                <tr className="border-b border-line last:border-0 hover:bg-stone-50/70" key={idx}>
+                <tr className="border-b border-line last:border-0 hover:bg-selected/60" key={idx}>
                   <td className="px-4 py-3 font-medium">
                     <a href={role.source_url} target="_blank" rel="noreferrer" className="text-ink hover:underline">
                       {role.title}
