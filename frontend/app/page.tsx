@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MetricCard } from "@/components/MetricCard";
 import { FilterBar } from "@/components/FilterBar";
 import { CategoryHeatmap } from "@/components/CategoryHeatmap";
+import { CompanyLogo } from "@/components/CompanyLogo";
 import { getRoleHref } from "@/lib/data";
 import {
   getCompanies,
@@ -259,12 +260,13 @@ export default async function Home({ searchParams }: HomeProps) {
                   >
                     <td className="px-4 py-3">
                       <Link
-                        className="flex items-center gap-3 font-medium text-ink"
+                        className="flex items-center gap-2.5 font-medium text-ink"
                         href={`/company/${company.slug}`}
                       >
                         <span className="w-5 text-xs text-subtle">
                           {index + 1}
                         </span>
+                        <CompanyLogo name={company.name} size={20} slug={company.slug} />
                         {company.name}
                       </Link>
                     </td>

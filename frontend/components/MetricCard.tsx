@@ -8,44 +8,52 @@ type MetricCardProps = {
   href?: string;
 };
 
-export function MetricCard({
-  label,
-  value,
-  change,
-  detail,
-  href
-}: MetricCardProps) {
+export function MetricCard({ label, value, change, detail, href }: MetricCardProps) {
   const isPositive = !change.startsWith("-");
+  const isNeutral =
+    change.startsWith("Needs") ||
+    change.startsWith("Refresh") ||
+    change.startsWith("Monitoring") ||
+    change === "—";
+
+  const pillClass = isNeutral
+    ? "bg-stone-100 text-muted"
+    : isPositive
+    ? "bg-teal-50 text-teal-700"
+    : "bg-red-50 text-red-600";
+
   const content = (
-    <>
-      <div className="text-xs font-medium uppercase tracking-[0.08em] text-muted">
+    <div className="flex h-full flex-col gap-3">
+      {/* Label */}
+      <div className="text-xs font-medium uppercase tracking-[0.08em] text-subtle">
         {label}
       </div>
-      <div className="mt-3 flex items-baseline justify-between gap-3">
-        <div className="text-2xl font-semibold leading-none text-ink">{value}</div>
-        <div
-          className={
-            isPositive
-              ? "text-sm font-medium text-accent"
-              : "text-sm font-medium text-stone-500"
-          }
-        >
+
+      {/* Value — hero number/text */}
+      <div className="text-2xl font-semibold leading-none text-ink">{value}</div>
+
+      {/* Change pill — own row, never competes with value */}
+      <div>
+        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${pillClass}`}>
           {change}
-        </div>
+        </span>
       </div>
-      <p className="mt-3 min-h-10 text-sm leading-5 text-muted">{detail}</p>
-    </>
+
+      {/* Detail — pushed to bottom */}
+      <p className="mt-auto text-xs leading-5 text-muted">{detail}</p>
+    </div>
   );
 
+  const baseClass =
+    "block rounded-lg border border-line bg-white p-4 shadow-hairline transition-colors";
+  const hoverClass = href ? " hover:border-stone-300 hover:bg-selected/50 cursor-pointer" : "";
+
   return href ? (
-    <Link
-      className="block rounded-lg border border-line bg-white p-4 shadow-hairline transition hover:border-stone-300 hover:bg-stone-50/50"
-      href={href}
-    >
+    <Link className={baseClass + hoverClass} href={href}>
       {content}
     </Link>
   ) : (
-    <div className="rounded-lg border border-line bg-white p-4 shadow-hairline">
+    <div className={baseClass}>
       {content}
     </div>
   );
