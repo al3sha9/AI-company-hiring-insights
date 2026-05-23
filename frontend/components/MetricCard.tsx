@@ -15,44 +15,37 @@ export function MetricCard({
   detail,
   href
 }: MetricCardProps) {
-  const isPositive = !change.startsWith("-") && change !== "Available after second scrape run" && change !== "Pending";
-
+  const isPositive = !change.startsWith("-");
   const content = (
-    <div className="flex h-full flex-col justify-between py-3">
-      <div>
-        <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted">
-          {label}
-        </div>
-        <div className="mt-2 text-3xl font-light tracking-tight text-ink">
-          {value}
-        </div>
+    <>
+      <div className="text-xs font-medium uppercase tracking-[0.08em] text-muted">
+        {label}
       </div>
-      <div className="mt-6">
+      <div className="mt-3 flex items-baseline justify-between gap-3">
+        <div className="text-2xl font-semibold leading-none text-ink">{value}</div>
         <div
           className={
             isPositive
-              ? "text-xs font-bold uppercase tracking-widest text-accent"
-              : "text-xs font-bold uppercase tracking-widest text-muted"
+              ? "text-sm font-medium text-accent"
+              : "text-sm font-medium text-stone-500"
           }
         >
           {change}
         </div>
-        <p className="mt-1 text-sm leading-relaxed text-muted">
-          {detail}
-        </p>
       </div>
-    </div>
+      <p className="mt-3 min-h-10 text-sm leading-5 text-muted">{detail}</p>
+    </>
   );
 
   return href ? (
     <Link
-      className="group block h-full border-t border-line transition-colors hover:border-ink"
+      className="block rounded-lg border border-line bg-white p-4 shadow-hairline transition hover:border-stone-300 hover:bg-stone-50/50"
       href={href}
     >
       {content}
     </Link>
   ) : (
-    <div className="h-full border-t border-line">
+    <div className="rounded-lg border border-line bg-white p-4 shadow-hairline">
       {content}
     </div>
   );
