@@ -287,3 +287,77 @@ def get_categories():
     result.sort(key=lambda x: x["count"], reverse=True)
 
     return result
+
+
+@app.get("/category-matrix")
+def get_category_matrix():
+    """
+    Returns role counts broken down by category × company.
+    Used to render the heatmap on the dashboard.
+    """
+    roles_res = supabase.table("roles").select("company_slug, category").execute()
+    companies_res = supabase.table("companies").select("slug, name").execute()
+
+    company_names = {c["slug"]: c["name"] for c in companies_res.data}
+    all_companies = [c["name"] for c in companies_res.data]
+
+    matrix: dict[str, dict[str, int]] = {}
+    for r in roles_res.data:
+        cat = r.get("category") or "Uncategorized"
+        name = company_names.get(r.get("company_slug") or "", "Unknown")
+        if cat not in matrix:
+            matrix[cat] = {}
+        matrix[cat][name] = matrix[cat].get(name, 0) + 1
+
+    result = []
+    for cat, company_counts in matrix.items():
+        total = sum(company_counts.values())
+        result.append({
+            "category": cat,
+            "total": total,
+            "companies": {name: company_counts.get(name, 0) for name in all_companies},
+        })
+
+    result.sort(key=lambda x: x["total"], reverse=True)
+    return {"companies": all_companies, "matrix": result}
+
+
+@app.get("/categories/seniority")
+def get_category_seniority():
+    """
+    Returns seniority breakdown (senior / mid / junior) per category.
+    Used to render split bars on the dashboard.
+    """
+    roles_res = supabase.table("roles").select("category, seniority").execute()
+
+    SENIOR = {"Senior", "Staff", "Lead", "Principal", "Director"}
+    JUNIOR = {"Junior", "Associate", "Entry", "Intern"}
+
+    breakdown: dict[str, dict[str, int]] = {}
+    for r in roles_res.data:
+        cat = r.get("category") or "Uncategorized"
+        sen = r.get("seniority") or ""
+        if cat not in breakdown:
+            breakdown[cat] = {"senior": 0, "mid": 0, "junior": 0}
+        if sen in SENIOR:
+            breakdown[cat]["senior"] += 1
+        elif sen in JUNIOR:
+            breakdown[cat]["junior"] += 1
+        else:
+            breakdown[cat]["mid"] += 1
+
+    result = []
+    for cat, counts in breakdown.items():
+        total = counts["senior"] + counts["mid"] + counts["junior"]
+        result.append({
+            "category": cat,
+            "total": total,
+            "senior": counts["senior"],
+            "mid": counts["mid"],
+            "junior": counts["junior"],
+            "senior_pct": round((counts["senior"] / total) * 100) if total > 0 else 0,
+        })
+
+    result.sort(key=lambda x: x["total"], reverse=True)
+    return result
+

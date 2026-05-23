@@ -76,3 +76,22 @@ export async function getLocations() {
 
   return result.sort((a, b) => b.roles - a.roles);
 }
+
+export async function getCategoryMatrix() {
+  const res = await fetch(`${API_URL}/category-matrix`, { cache: 'no-store' });
+  if (!res.ok) throw new Error("Failed to fetch category matrix");
+  return res.json() as Promise<{
+    companies: string[];
+    matrix: Array<{ category: string; total: number; companies: Record<string, number> }>;
+  }>;
+}
+
+export async function getCategorySeniority() {
+  const res = await fetch(`${API_URL}/categories/seniority`, { cache: 'no-store' });
+  if (!res.ok) throw new Error("Failed to fetch category seniority");
+  return res.json() as Promise<Array<{
+    category: string; total: number;
+    senior: number; mid: number; junior: number; senior_pct: number;
+  }>>;
+}
+
