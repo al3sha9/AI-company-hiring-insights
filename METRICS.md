@@ -160,3 +160,87 @@ Ordered by how little the existing UI needs to change.
 3. **Suggestion 2** (narrative insight cards) — 2–3 hrs, high storytelling value
 4. **Suggestion 3** (seniority split) — 3–4 hrs, underrated signal
 5. **Suggestion 4** (heatmap) — 1–2 days, most shareable visual
+
+---
+
+## Unusual Role Signals — Reading Between the Lines
+
+Some of the most valuable hiring signals are not in the obvious roles. A company's strategic direction often hides inside titles that look routine until you understand what AI companies actually use those roles for.
+
+---
+
+### Case Study: xAI Science Tutors
+
+xAI is actively hiring:
+- Biology Tutor
+- Chemistry Tutor
+- Chemical Engineering Tutor
+- Civil Engineer
+
+At a normal company these would be unremarkable. At an AI company, they are a direct readout of strategy.
+
+**What "Tutor" roles actually mean at AI companies:**
+
+These are RLHF (Reinforcement Learning from Human Feedback) trainer roles, not education hires. The people filling them are not teaching anyone. Their actual job is to:
+
+- Rate and correct the model's answers on hard scientific questions
+- Generate ground-truth training data in technical domains
+- Red-team the model on edge cases in biology, chemistry, and materials science
+
+**Strategic interpretation:**
+
+xAI is positioning Grok as a serious scientific reasoning assistant — not just a general chatbot. The same pattern appeared at OpenAI when they scaled GPT-4's scientific capabilities. Hiring domain-expert labelers in specific scientific fields is an expensive, deliberate bet on accuracy in those fields.
+
+**Civil Engineer at an AI company:**
+
+Almost certainly infrastructure, not product. xAI's Colossus supercomputer cluster is the most likely context — facility design, power systems, and data center buildout.
+
+---
+
+### The General Rule: Domain Expert Hiring = Model Direction
+
+When an AI company hires experts from a domain that has nothing to do with software, they are almost always building training data or RLHF pipelines for that domain.
+
+| Unusual hire | What it signals |
+|---|---|
+| Biology / Chemistry Tutor | RLHF for scientific reasoning |
+| Lawyer / Legal Analyst | Training data for legal AI or compliance |
+| Doctor / Medical Reviewer | Medical AI accuracy pipeline |
+| Financial Analyst | FinTech model capability build |
+| Pilot / Aviation Expert | Physical world / simulation training |
+| Red Team Specialist | Safety evaluations, adversarial testing |
+| Ethicist | Policy-driven training constraints |
+
+---
+
+### How to Surface This in the Product
+
+**Option 1 — Rule-based flagging (fast, no API cost)**
+
+A backend dictionary maps role title keywords to known strategic patterns:
+
+```python
+SIGNAL_PATTERNS = {
+    "tutor": "RLHF trainer — signals model training in this subject domain",
+    "annotator": "Training data pipeline — signals scaling of a specific capability",
+    "red team": "Safety evaluation — signals regulatory or policy pressure",
+    "ethicist": "Policy-driven model constraints — signals governance investment",
+    "legal": "Legal AI or compliance pipeline — signals enterprise or regulated market push",
+}
+```
+
+If 2+ roles match a pattern at the same company, surface a signal card on the company page.
+
+**Option 2 — LLM-generated interpretation (richer, needs API key)**
+
+Send the top 10 unusual role titles for a company to an LLM with the prompt:
+
+> "These are job titles at an AI company. Identify any that are unusual for a tech company and explain what they signal about the company's strategic direction. Be specific and concise."
+
+This scales to any company, any role type, and produces editorial-quality output without manual rule maintenance.
+
+**Recommended UI placement:**
+
+A "Strategic signals" card on each company page, positioned above the roles table. Short, plain-English, opinionated. Example:
+
+> xAI has 3 science tutor roles (Biology, Chemistry, Chemical Engineering). At AI companies these are RLHF trainers, not education hires. This signals Grok is being trained for deep scientific accuracy — a direct challenge to GPT-4 in research and STEM use cases.

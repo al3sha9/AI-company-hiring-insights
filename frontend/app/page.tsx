@@ -10,6 +10,7 @@ import {
   getLocations,
   getCategoryMatrix,
   getCategorySeniority,
+  getUnusualSignals,
 } from "@/lib/api";
 
 type HomeProps = {
@@ -23,15 +24,21 @@ type HomeProps = {
 export default async function Home({ searchParams }: HomeProps) {
   const filters = await searchParams;
 
-  // Fetch all data in parallel
-  const [apiCompanies, apiCategories, apiLocations, heatmapData, seniority] =
-    await Promise.all([
-      getCompanies(),
-      getCategories(),
-      getLocations(),
-      getCategoryMatrix().catch(() => ({ companies: [], matrix: [] })),
-      getCategorySeniority().catch(() => []),
-    ]);
+  // Two-wave fetch: critical data first, enrichment second.
+  // Prevents macOS socket saturation (EAGAIN/Errno 35) from 6 simultaneous
+  // Supabase connections firing at once.
+  const [apiCompanies, apiCategories, apiLocations] = await Promise.all([
+    getCompanies(),
+    getCategories(),
+    getLocations(),
+  ]);
+
+  const [heatmapData, seniority, unusualSignals] = await Promise.all([
+    getCategoryMatrix().catch(() => ({ companies: [], matrix: [] })),
+    getCategorySeniority().catch(() => []),
+    getUnusualSignals().catch(() => ({})),
+  ]);
+
 
   // --- Overall metrics ---
   const totalOpenRoles = apiCompanies.reduce(
@@ -259,7 +266,7 @@ export default async function Home({ searchParams }: HomeProps) {
                   <th className="px-4 py-3 font-medium">WoW change</th>
                   <th className="px-4 py-3 font-medium">Top growing category</th>
                   <th className="px-4 py-3 font-medium">Top hiring location</th>
-                  <th className="px-4 py-3 font-medium">Signal</th>
+                  <th className="px-4 py-3 font-medium">Unusual signal</th>
                 </tr>
               </thead>
               <tbody>
@@ -321,9 +328,20 @@ export default async function Home({ searchParams }: HomeProps) {
                       </Link>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-800">
-                        {company.signal}
-                      </span>
+                      {(() => {
+                        const sig = unusualSignals[company.slug];
+                        return sig ? (
+                          <div>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
+                              {sig.label}
+                              <span className="font-normal opacity-70">({sig.count})</span>
+                            </span>
+                            <p className="mt-1 text-xs text-subtle">{sig.description}</p>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-subtle">—</span>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}

@@ -361,3 +361,82 @@ def get_category_seniority():
     result.sort(key=lambda x: x["total"], reverse=True)
     return result
 
+
+@app.get("/unusual-signals")
+def get_unusual_signals():
+    """
+    Detects unusual role patterns per company by scanning titles for
+    keywords that are atypical for a software/AI company but carry
+    strong strategic signal (e.g. tutors = RLHF trainers).
+    Returns the top detected signal per company slug.
+    """
+    PATTERNS: list[tuple[list[str], str, str]] = [
+        # Science / RLHF trainers (xAI, Anthropic)
+        (["tutor", "biolog", "chemist", "physic", "earth sci", "geolog", "astro"],
+         "Science trainers", "RLHF pipeline for scientific reasoning"),
+        # Data labeling / annotation
+        (["annotator", "labeler", "data label", "rater", "content reviewer"],
+         "Data annotators", "Training data pipeline scaling"),
+        # Safety / red team
+        (["red team", "redteam", "adversarial", "jailbreak", "safety evaluator"],
+         "Red teamers", "Safety and adversarial evaluation"),
+        # Trust, policy, ethics
+        (["ethicist", "responsible ai", "trust & safety", "trust and safety",
+          "content policy", "community policy"],
+         "Trust & safety", "AI governance and policy pressure"),
+        # Government / regulatory affairs (OpenAI, Anthropic)
+        (["policy", "government affairs", "regulatory affairs",
+          "public affairs", "legislation", "government relation"],
+         "Policy & gov't", "Regulatory engagement and government sales pipeline"),
+        # Legal / compliance
+        (["lawyer", "attorney", "legal counsel", "general counsel",
+          "compliance", "legal advisor"],
+         "Legal roles", "Enterprise or regulated market push"),
+        # Infrastructure / data center ops (OpenAI Stargate, CoreWeave)
+        (["data center", "facilities", "site reliability", "power",
+          "mechanical engineer", "electrical engineer", "hvac"],
+         "Infra ops", "Physical compute infrastructure at scale"),
+        # Creative domain experts (OpenAI Sora, image gen models)
+        (["filmmaker", "cinematograph", "video producer", "creative director",
+          "concept artist", "animator", "storyboard", "photographer"],
+         "Creative domain", "Multimodal model training with creative experts"),
+        # Medical / healthcare
+        (["doctor", "physician", "nurse", "clinical", "radiolog", "patholog"],
+         "Medical roles", "Healthcare AI capability pipeline"),
+        # Economics research
+        (["economist", "economic research", "market design", "welfare"],
+         "Economics research", "Pricing, market design, or welfare modeling"),
+        # Alignment / safety research (distinct from red team)
+        (["alignment", "interpretab", "mechanistic", "scalable oversight"],
+         "Alignment research", "Fundamental AI safety and alignment investment"),
+        # Robotics / physical AI
+        (["robotics", "mechatronics", "actuator", "embodied", "manipulation"],
+         "Robotics roles", "Physical AI and embodied intelligence"),
+        # Aviation / aerospace
+        (["pilot", "aviation", "aerospace", "flight"],
+         "Aviation roles", "Physical-world or simulation training data"),
+    ]
+
+
+    roles_res = supabase.table("roles").select("company_slug, title").execute()
+
+    company_titles: dict[str, list[str]] = {}
+    for r in roles_res.data:
+        slug = r.get("company_slug") or ""
+        title = (r.get("title") or "").lower()
+        company_titles.setdefault(slug, []).append(title)
+
+    result: dict[str, dict] = {}
+    for slug, titles in company_titles.items():
+        best: dict | None = None
+        for keywords, label, description in PATTERNS:
+            matched = [t for t in titles if any(kw in t for kw in keywords)]
+            if len(matched) >= 2:
+                if best is None or len(matched) > best["count"]:
+                    best = {"label": label, "count": len(matched), "description": description}
+        if best:
+            result[slug] = best
+
+    return result
+
+

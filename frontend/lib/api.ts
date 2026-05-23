@@ -95,3 +95,10 @@ export async function getCategorySeniority() {
   }>>;
 }
 
+export async function getUnusualSignals() {
+  const res = await fetch(`${API_URL}/unusual-signals`, { cache: 'no-store' });
+  if (!res.ok) return {} as Record<string, { label: string; count: number; description: string }>;
+  return res.json() as Promise<Record<string, { label: string; count: number; description: string }>>;
+}
+
+
