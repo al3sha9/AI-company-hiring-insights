@@ -90,6 +90,20 @@ export default async function Home({ searchParams }: HomeProps) {
     [...apiCompanies].sort((a, b) => b.change_pct - a.change_pct)[0] ||
     apiCompanies[0] || { name: "N/A", slug: "", change_pct: 0, current_roles: 0 };
 
+  // Build top category per company from heatmap data (most roles in any single category)
+  const topCategoryByCompany: Record<string, string> = {};
+  for (const row of heatmapData.matrix) {
+    for (const companyName of heatmapData.companies) {
+      const count = row.companies[companyName] || 0;
+      if (count === 0) continue;
+      const currentCat = topCategoryByCompany[companyName];
+      const currentCount = currentCat
+        ? (heatmapData.matrix.find((r) => r.category === currentCat)?.companies[companyName] || 0)
+        : 0;
+      if (count > currentCount) topCategoryByCompany[companyName] = row.category;
+    }
+  }
+
   let rankedCompanies = [...apiCompanies]
     .sort((a, b) => b.change_pct - a.change_pct)
     .map((c: any) => ({
@@ -97,7 +111,7 @@ export default async function Home({ searchParams }: HomeProps) {
       name: c.name,
       openRoles: c.current_roles,
       wowChange: c.change_pct,
-      topGrowingCategory: "Engineering",
+      topGrowingCategory: topCategoryByCompany[c.name] || "Software Engineering",
       topHiringLocation: "Remote",
       signal: "Active",
     }));
@@ -134,23 +148,7 @@ export default async function Home({ searchParams }: HomeProps) {
     | { senior_pct: number }
     | undefined;
 
-  // --- Suggestion 2: Narrative insight card text ---
-  const insight1 =
-    topCategory.category !== "N/A"
-      ? `${topCategory.category} leads with ${topCategory.growth} open roles across all ${apiCompanies.length} tracked companies.`
-      : "Run the scraper to populate signals.";
 
-  const insight2 =
-    topCatSeniority && topCatSeniority.senior_pct > 0
-      ? `${topCategory.category} hiring is ${topCatSeniority.senior_pct}% senior-level — a signal of committed capability building, not just headcount scaling.`
-      : fastestGrowingCompany.name !== "N/A"
-      ? `${fastestGrowingCompany.name} leads open role count with ${fastestGrowingCompany.current_roles} positions across all categories.`
-      : "Run the scraper to populate signals.";
-
-  const insight3 =
-    topLocation.country !== "N/A"
-      ? `${topLocation.country} is the top hiring destination with ${topLocation.roles} open roles. ${topLocation.topCompany} leads the region.`
-      : "Run the scraper to populate signals.";
 
   return (
     <main className="mx-auto min-h-screen max-w-8xl px-4 py-5 sm:px-6 lg:px-10 xl:px-14">
@@ -241,8 +239,30 @@ export default async function Home({ searchParams }: HomeProps) {
         />
       </section>
 
-      {/* --- Company table + Insight cards --- */}
-      <section className="grid gap-4 xl:grid-cols-[1.6fr_0.9fr]">
+      {/* --- Where each company is placing its bets heatmap --- */}
+      {heatmapData.matrix.length > 0 && (
+        <section className="rounded-lg border border-line bg-white shadow-hairline">
+          <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
+            <div>
+              <h2 className="text-base font-semibold text-ink">
+                Where each company is placing its bets
+              </h2>
+              <p className="mt-1 text-xs text-muted">
+                Role concentration by category. Darker cell = more roles.
+              </p>
+            </div>
+          </div>
+          <div className="p-4">
+            <CategoryHeatmap
+              companies={heatmapData.companies}
+              matrix={heatmapData.matrix}
+            />
+          </div>
+        </section>
+      )}
+
+      {/* --- Company table + Mohamed's Read --- */}
+      <section className="mt-6 grid gap-4 xl:grid-cols-[1.6fr_0.9fr]">
         <div className="rounded-lg border border-line bg-white shadow-hairline">
           <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
             <div>
@@ -266,7 +286,7 @@ export default async function Home({ searchParams }: HomeProps) {
                   <th className="px-4 py-3 font-medium">WoW change</th>
                   <th className="px-4 py-3 font-medium">Top growing category</th>
                   <th className="px-4 py-3 font-medium">Top hiring location</th>
-                  <th className="px-4 py-3 font-medium">Unusual signal</th>
+                  <th className="px-4 py-3 font-medium">Surprise hire</th>
                 </tr>
               </thead>
               <tbody>
@@ -350,47 +370,13 @@ export default async function Home({ searchParams }: HomeProps) {
           </div>
         </div>
 
-        {/* Suggestion 2: Narrative insight cards */}
-        <aside className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-          <InsightCard
-            href={getRoleHref({ category: topCategory.category })}
-            label="What jumped this week"
-            text={insight1}
-          />
-          <InsightCard
-            href={getRoleHref({ category: topCategory.category })}
-            label="Strongest signal"
-            text={insight2}
-          />
-          <InsightCard
-            href={getRoleHref({ country: topLocation.country })}
-            label="Where the map is shifting"
-            text={insight3}
-          />
+        {/* Mohamed's Read — single authored opinion card */}
+        <aside>
+          <MohamedsRead />
         </aside>
       </section>
 
-      {/* --- Suggestion 4: Category × Company heatmap --- */}
-      {heatmapData.matrix.length > 0 && (
-        <section className="mt-4 rounded-lg border border-line bg-white shadow-hairline">
-          <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
-            <div>
-              <h2 className="text-base font-semibold text-ink">
-                Where each company is placing its bets
-              </h2>
-              <p className="mt-1 text-xs text-muted">
-                Role concentration by category. Darker cell = more roles.
-              </p>
-            </div>
-          </div>
-          <div className="p-4">
-            <CategoryHeatmap
-              companies={heatmapData.companies}
-              matrix={heatmapData.matrix}
-            />
-          </div>
-        </section>
-      )}
+
 
       {/* --- Category bars + Locations --- */}
       <section className="grid gap-4 py-4 lg:grid-cols-2">
@@ -527,24 +513,36 @@ export default async function Home({ searchParams }: HomeProps) {
   );
 }
 
-function InsightCard({
-  href,
-  label,
-  text,
-}: {
-  href: string;
-  label: string;
-  text: string;
-}) {
+function MohamedsRead() {
   return (
-    <Link
-      className="block rounded-lg border border-line bg-white p-4 shadow-hairline transition hover:border-stone-300 hover:bg-selected/50"
-      href={href}
-    >
-      <div className="text-xs font-medium uppercase tracking-[0.08em] text-muted">
-        {label}
+    <div className="rounded-lg border border-line bg-white p-5 shadow-hairline h-full">
+      {/* Header */}
+      <div className="flex items-start gap-3 border-b border-line pb-4">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-white">
+          M
+        </div>
+        <div>
+          <div className="text-xs font-medium uppercase tracking-[0.08em] text-muted">
+            Mohamed&#39;s Read
+          </div>
+          <p className="mt-0.5 text-xs text-subtle">
+            My personal take on what the hiring data actually signals.
+          </p>
+        </div>
       </div>
-      <p className="mt-3 text-sm font-medium leading-6 text-ink">{text}</p>
-    </Link>
+
+      {/* Opinion body */}
+      <div className="mt-4 space-y-3 text-sm leading-6 text-ink">
+        <p>
+          The surge in senior engineering roles isn&#39;t just headcount — it&#39;s a bet on compound capability. When companies like OpenAI and Anthropic hire at the senior level, they&#39;re not filling seats, they&#39;re assembling the people who will define their next 3 years of product.
+        </p>
+        <p>
+          The US concentration makes sense right now, but watch for it to shift. Compute costs and regulatory pressure are going to push more infra roles toward regions with favorable energy policy — Canada, the Nordics, the Gulf.
+        </p>
+        <p className="text-subtle">
+          Updated manually · May 2025
+        </p>
+      </div>
+    </div>
   );
 }

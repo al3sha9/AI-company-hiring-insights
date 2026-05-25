@@ -18,6 +18,44 @@ import scraper.mistral as mistral_scraper
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def fetch_all_roles(columns: str, recent_cutoff: str) -> list[dict]:
+    """
+    Pages through the roles table in 1000-row chunks to bypass Supabase's
+    server-side max-rows cap. Retries each page up to 3 times on transient
+    HTTP/2 connection drops (RemoteProtocolError) which occur on macOS.
+    """
+    import time
+    PAGE_SIZE = 1000
+    all_rows: list[dict] = []
+    offset = 0
+    while True:
+        last_exc = None
+        for attempt in range(3):
+            try:
+                res = (
+                    supabase.table("roles")
+                    .select(columns)
+                    .gte("last_seen_at", recent_cutoff)
+                    .range(offset, offset + PAGE_SIZE - 1)
+                    .execute()
+                )
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                logger.warning("fetch_all_roles page %d attempt %d failed: %s", offset, attempt + 1, exc)
+                time.sleep(0.5 * (attempt + 1))
+        if last_exc:
+            logger.error("fetch_all_roles giving up at offset %d: %s", offset, last_exc)
+            break
+        batch = res.data or []
+        all_rows.extend(batch)
+        if len(batch) < PAGE_SIZE:
+            break
+        offset += PAGE_SIZE
+    return all_rows
+
 app = FastAPI()
 
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
@@ -149,6 +187,50 @@ def trigger_scrape(authorization: str = Header(None)):
     return {"scraped_at": scraped_at, "results": summary}
 
 
+@app.post("/admin/reclassify")
+def reclassify_categories(authorization: str = Header(None)):
+    """
+    Re-runs infer_category() on every role in the DB using the stored title.
+    Use this after updating CATEGORY_KEYWORDS to backfill existing rows
+    without waiting for a full re-scrape.
+    """
+    scrape_secret = os.getenv("SCRAPE_SECRET")
+    if scrape_secret and authorization != f"Bearer {scrape_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    from scraper.greenhouse import infer_category
+
+    PAGE_SIZE = 1000
+    updated = 0
+    offset = 0
+
+    while True:
+        res = (
+            supabase.table("roles")
+            .select("source_url, company_slug, title")
+            .range(offset, offset + PAGE_SIZE - 1)
+            .execute()
+        )
+        batch = res.data or []
+        if not batch:
+            break
+
+        for role in batch:
+            title = role.get("title") or ""
+            new_category = infer_category("", title)
+            supabase.table("roles").update({"category": new_category}).eq(
+                "source_url", role["source_url"]
+            ).eq("company_slug", role["company_slug"]).execute()
+            updated += 1
+
+        if len(batch) < PAGE_SIZE:
+            break
+        offset += PAGE_SIZE
+
+    logger.info("Reclassified %d roles", updated)
+    return {"status": "done", "roles_updated": updated}
+
+
 @app.get("/companies")
 def get_companies():
     companies_res = supabase.table("companies").select("*").execute()
@@ -244,7 +326,17 @@ def get_company(slug: str):
         .execute()
     )
 
-    roles_res = supabase.table("roles").select("*").eq("company_slug", slug).execute()
+    # Filter to roles seen in the most recent scrape window only.
+    # The roles table is append-only and accumulates all historic rows,
+    # so without this filter category/location counts are inflated.
+    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    roles_res = (
+        supabase.table("roles")
+        .select("*")
+        .eq("company_slug", slug)
+        .gte("last_seen_at", recent_cutoff)
+        .execute()
+    )
     roles = roles_res.data
 
     categories = Counter()
@@ -276,10 +368,12 @@ def get_company(slug: str):
 
 @app.get("/categories")
 def get_categories():
-    roles_res = supabase.table("roles").select("category").execute()
+    # Only count roles seen in the most recent scrape window to match snapshot counts.
+    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    roles = fetch_all_roles("category", recent_cutoff)
 
     categories = Counter()
-    for r in roles_res.data:
+    for r in roles:
         cat = r.get("category") or "Uncategorized"
         categories[cat] += 1
 
@@ -294,15 +388,18 @@ def get_category_matrix():
     """
     Returns role counts broken down by category × company.
     Used to render the heatmap on the dashboard.
+    Only counts roles seen in the most recent scrape window so numbers
+    match the snapshot-based company table.
     """
-    roles_res = supabase.table("roles").select("company_slug, category").execute()
+    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    roles_data = fetch_all_roles("company_slug, category", recent_cutoff)
     companies_res = supabase.table("companies").select("slug, name").execute()
 
     company_names = {c["slug"]: c["name"] for c in companies_res.data}
     all_companies = [c["name"] for c in companies_res.data]
 
     matrix: dict[str, dict[str, int]] = {}
-    for r in roles_res.data:
+    for r in roles_data:
         cat = r.get("category") or "Uncategorized"
         name = company_names.get(r.get("company_slug") or "", "Unknown")
         if cat not in matrix:
@@ -327,14 +424,16 @@ def get_category_seniority():
     """
     Returns seniority breakdown (senior / mid / junior) per category.
     Used to render split bars on the dashboard.
+    Only counts roles seen in the most recent scrape window.
     """
-    roles_res = supabase.table("roles").select("category, seniority").execute()
+    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    roles_data = fetch_all_roles("category, seniority", recent_cutoff)
 
     SENIOR = {"Senior", "Staff", "Lead", "Principal", "Director"}
     JUNIOR = {"Junior", "Associate", "Entry", "Intern"}
 
     breakdown: dict[str, dict[str, int]] = {}
-    for r in roles_res.data:
+    for r in roles_data:
         cat = r.get("category") or "Uncategorized"
         sen = r.get("seniority") or ""
         if cat not in breakdown:
@@ -373,55 +472,56 @@ def get_unusual_signals():
     PATTERNS: list[tuple[list[str], str, str]] = [
         # Science / RLHF trainers (xAI, Anthropic)
         (["tutor", "biolog", "chemist", "physic", "earth sci", "geolog", "astro"],
-         "Science trainers", "RLHF pipeline for scientific reasoning"),
+         "Teaching the AI science", "Hiring scientists to teach the model, not just build it"),
         # Data labeling / annotation
         (["annotator", "labeler", "data label", "rater", "content reviewer"],
-         "Data annotators", "Training data pipeline scaling"),
+         "Human raters", "People reviewing and rating AI outputs to improve the model"),
         # Safety / red team
         (["red team", "redteam", "adversarial", "jailbreak", "safety evaluator"],
-         "Red teamers", "Safety and adversarial evaluation"),
+         "AI breakers", "Hired specifically to find ways to trick or break the AI"),
         # Trust, policy, ethics
         (["ethicist", "responsible ai", "trust & safety", "trust and safety",
           "content policy", "community policy"],
-         "Trust & safety", "AI governance and policy pressure"),
+         "Content safety", "Keeping harmful or policy-violating outputs off the platform"),
         # Government / regulatory affairs (OpenAI, Anthropic)
         (["policy", "government affairs", "regulatory affairs",
           "public affairs", "legislation", "government relation"],
-         "Policy & gov't", "Regulatory engagement and government sales pipeline"),
+         "Government relations", "Building relationships with regulators and governments"),
         # Legal / compliance
         (["lawyer", "attorney", "legal counsel", "general counsel",
           "compliance", "legal advisor"],
-         "Legal roles", "Enterprise or regulated market push"),
+         "Legal push", "Scaling into regulated industries or enterprise contracts"),
         # Infrastructure / data center ops (OpenAI Stargate, CoreWeave)
         (["data center", "facilities", "site reliability", "power",
           "mechanical engineer", "electrical engineer", "hvac"],
-         "Infra ops", "Physical compute infrastructure at scale"),
+         "Building data centers", "Constructing the physical hardware the AI runs on"),
         # Creative domain experts (OpenAI Sora, image gen models)
         (["filmmaker", "cinematograph", "video producer", "creative director",
           "concept artist", "animator", "storyboard", "photographer"],
-         "Creative domain", "Multimodal model training with creative experts"),
+         "Creative experts", "Filmmakers and artists teaching AI to understand media"),
         # Medical / healthcare
         (["doctor", "physician", "nurse", "clinical", "radiolog", "patholog"],
-         "Medical roles", "Healthcare AI capability pipeline"),
+         "Medical experts", "Doctors and clinicians building AI for healthcare use"),
         # Economics research
         (["economist", "economic research", "market design", "welfare"],
-         "Economics research", "Pricing, market design, or welfare modeling"),
+         "Economists", "Modeling pricing, markets, or the economic impact of AI"),
         # Alignment / safety research (distinct from red team)
         (["alignment", "interpretab", "mechanistic", "scalable oversight"],
-         "Alignment research", "Fundamental AI safety and alignment investment"),
+         "AI safety research", "Making sure AI stays predictable and under human control"),
         # Robotics / physical AI
         (["robotics", "mechatronics", "actuator", "embodied", "manipulation"],
-         "Robotics roles", "Physical AI and embodied intelligence"),
+         "Robot builders", "Moving AI from software into physical machines and arms"),
         # Aviation / aerospace
         (["pilot", "aviation", "aerospace", "flight"],
-         "Aviation roles", "Physical-world or simulation training data"),
+         "Aviation hires", "Pilots and aerospace experts — likely for simulation or defense data"),
     ]
 
 
-    roles_res = supabase.table("roles").select("company_slug, title").execute()
+    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    roles_data = fetch_all_roles("company_slug, title", recent_cutoff)
 
     company_titles: dict[str, list[str]] = {}
-    for r in roles_res.data:
+    for r in roles_data:
         slug = r.get("company_slug") or ""
         title = (r.get("title") or "").lower()
         company_titles.setdefault(slug, []).append(title)

@@ -102,8 +102,26 @@ CATEGORY_KEYWORDS: list[tuple[list[str], str]] = [
       "devrel", "content"], "Marketing"),
     (["operations", "people", "hr", "recruiting", "finance", "legal",
       "supply chain", "program manager", "tpm", "facilities"], "Operations"),
-    (["engineer", "software", "backend", "frontend", "fullstack", "full-stack",
-      "developer", "api", "systems", "data engineer"], "Engineering"),
+    # --- Engineering sub-categories (most specific first) ---
+    (["ml engineer", "ai engineer", "model engineer", "llm engineer",
+      "foundation model", "fine-tun", "training engineer", "inference engineer"],
+     "ML & AI Engineering"),
+    (["data scientist", "data analyst", "analytics engineer",
+      "business intelligence", " bi ", "quantitative analyst", "quant "],
+     "Data Science & Analytics"),
+    (["data engineer", "data pipeline", "etl", "data platform",
+      "data infrastructure", "data warehouse"],
+     "Data Engineering"),
+    (["frontend", "front-end", "ui engineer", "web engineer",
+      "fullstack", "full-stack", "react engineer"],
+     "Frontend & Web Engineering"),
+    (["backend", "back-end", "server-side", "api engineer",
+      "systems engineer", "distributed", "golang", "python engineer",
+      "java engineer", "c++ engineer"],
+     "Backend Engineering"),
+    # Generic engineering fallback
+    (["engineer", "software", "developer", "api", "systems"],
+     "Software Engineering"),
 ]
 
 
@@ -113,7 +131,7 @@ def infer_category(department_name: str, title: str) -> str:
         for kw in keywords:
             if kw in text:
                 return category
-    return "Engineering"  # sensible default
+    return "Software Engineering"  # sensible default
 
 
 # ---------------------------------------------------------------------------
