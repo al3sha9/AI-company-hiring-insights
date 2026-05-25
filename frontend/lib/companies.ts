@@ -6,6 +6,8 @@ export const COMPANY_DOMAINS: Record<string, string> = {
   xai: "x.ai",
   coreweave: "coreweave.com",
   mistral: "mistral.ai",
+  nvidia: "nvidia.com",
+  amazonagi: "amazon.science",
 };
 
 export function getLogoUrl(slug: string): string | null {

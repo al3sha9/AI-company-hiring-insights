@@ -14,12 +14,14 @@ import scraper.perplexityai as perplexityai_scraper
 import scraper.xai as xai_scraper
 import scraper.coreweave as coreweave_scraper
 import scraper.mistral as mistral_scraper
+import scraper.nvidia as nvidia_scraper
+import scraper.amazon as amazonagi_scraper
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def fetch_all_roles(columns: str, recent_cutoff: str) -> list[dict]:
+def fetch_all_roles(columns: str, recent_cutoff: str, company_slug: str = None) -> list[dict]:
     """
     Pages through the roles table in 1000-row chunks to bypass Supabase's
     server-side max-rows cap. Retries each page up to 3 times on transient
@@ -33,13 +35,15 @@ def fetch_all_roles(columns: str, recent_cutoff: str) -> list[dict]:
         last_exc = None
         for attempt in range(3):
             try:
-                res = (
+                query = (
                     supabase.table("roles")
                     .select(columns)
                     .gte("last_seen_at", recent_cutoff)
-                    .range(offset, offset + PAGE_SIZE - 1)
-                    .execute()
                 )
+                if company_slug:
+                    query = query.eq("company_slug", company_slug)
+                
+                res = query.range(offset, offset + PAGE_SIZE - 1).execute()
                 last_exc = None
                 break
             except Exception as exc:
@@ -75,7 +79,8 @@ SCRAPERS: list[tuple[str, object]] = [
     ("perplexityai", perplexityai_scraper),
     ("xai", xai_scraper),
     ("coreweave", coreweave_scraper),
-    ("mistral", mistral_scraper),
+    ("nvidia", nvidia_scraper),
+    ("amazonagi", amazonagi_scraper),
 ]
 
 
@@ -299,6 +304,8 @@ def scrape_audit(authorization: str = Header(None)):
         ("xai",          "xAI",         lambda: count_greenhouse("xai")),
         ("coreweave",    "CoreWeave",   lambda: count_greenhouse("coreweave")),
         ("mistral",      "Mistral",     lambda: count_lever("mistral")),
+        ("nvidia",       "Nvidia",      lambda: 0), # No single fetch for Nvidia audit since it uses Workday POST
+        ("amazonagi",    "Amazon AGI",  lambda: 0), # Amazon requires base_query search API
     ]
 
     # --- Our DB counts (recent 14 days) ---
@@ -437,14 +444,7 @@ def get_company(slug: str):
     # The roles table is append-only and accumulates all historic rows,
     # so without this filter category/location counts are inflated.
     recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
-    roles_res = (
-        supabase.table("roles")
-        .select("*")
-        .eq("company_slug", slug)
-        .gte("last_seen_at", recent_cutoff)
-        .execute()
-    )
-    roles = roles_res.data
+    roles = fetch_all_roles("*", recent_cutoff, company_slug=slug)
 
     categories = Counter()
     countries = Counter()
