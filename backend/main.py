@@ -176,13 +176,10 @@ def trigger_scrape(authorization: str = Header(None)):
     scraped_at = datetime.now(timezone.utc).isoformat()
     summary: list[dict] = []
 
-    with ThreadPoolExecutor(max_workers=len(SCRAPERS)) as executor:
-        futures = {
-            executor.submit(_scrape_one, slug, module, scraped_at): slug
-            for slug, module in SCRAPERS
-        }
-        for future in as_completed(futures):
-            summary.append(future.result())
+    # Run scrapers sequentially to avoid macOS [Errno 35] socket saturation
+    # that occurs when 6+ outbound connections fire simultaneously.
+    for slug, module in SCRAPERS:
+        summary.append(_scrape_one(slug, module, scraped_at))
 
     return {"scraped_at": scraped_at, "results": summary}
 
@@ -229,6 +226,116 @@ def reclassify_categories(authorization: str = Header(None)):
 
     logger.info("Reclassified %d roles", updated)
     return {"status": "done", "roles_updated": updated}
+
+
+@app.post("/admin/reset-roles")
+def reset_roles(authorization: str = Header(None)):
+    """
+    Deletes ALL rows from the roles table so a fresh scrape starts from scratch.
+    role_snapshots are preserved for historical trend data.
+    Call POST /scrape/run immediately after to repopulate.
+    """
+    scrape_secret = os.getenv("SCRAPE_SECRET")
+    if scrape_secret and authorization != f"Bearer {scrape_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # PostgREST requires a filter for DELETE — match every row via a tautology
+    res = supabase.table("roles").delete().gte("first_seen_at", "2000-01-01").execute()
+    deleted = len(res.data) if res.data else "unknown"
+    logger.info("reset-roles: deleted %s rows", deleted)
+    return {
+        "status": "done",
+        "rows_deleted": deleted,
+        "next_step": "POST /scrape/run to repopulate",
+    }
+
+
+@app.get("/admin/scrape-audit")
+def scrape_audit(authorization: str = Header(None)):
+    """
+    Fetches live job counts directly from each company's career page API
+    and compares against what's currently in our DB.
+    Use this after a fresh scrape to verify capture completeness.
+    """
+    scrape_secret = os.getenv("SCRAPE_SECRET")
+    if scrape_secret and authorization != f"Bearer {scrape_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    import httpx
+
+    # --- Live counts from career page APIs ---
+    def count_greenhouse(board_token: str) -> int | str:
+        url = f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=false"
+        try:
+            with httpx.Client(timeout=20) as client:
+                data = client.get(url).raise_for_status().json()
+            return len(data.get("jobs", []))
+        except Exception as exc:
+            return f"error: {exc}"
+
+    def count_ashby(board_token: str) -> int | str:
+        url = f"https://api.ashbyhq.com/posting-api/job-board/{board_token}"
+        try:
+            with httpx.Client(timeout=20) as client:
+                data = client.get(url).raise_for_status().json()
+            return len(data.get("jobs", []))
+        except Exception as exc:
+            return f"error: {exc}"
+
+    def count_lever(company_id: str) -> int | str:
+        url = f"https://api.lever.co/v0/postings/{company_id}?mode=json"
+        try:
+            with httpx.Client(timeout=20) as client:
+                data = client.get(url).raise_for_status().json()
+            return len(data) if isinstance(data, list) else 0
+        except Exception as exc:
+            return f"error: {exc}"
+
+    # (slug, display_name, fetch_fn)
+    SOURCES = [
+        ("anthropic",    "Anthropic",   lambda: count_greenhouse("anthropic")),
+        ("openai",       "OpenAI",      lambda: count_ashby("openai")),
+        ("perplexityai", "Perplexity",  lambda: count_ashby("perplexity")),
+        ("xai",          "xAI",         lambda: count_greenhouse("xai")),
+        ("coreweave",    "CoreWeave",   lambda: count_greenhouse("coreweave")),
+        ("mistral",      "Mistral",     lambda: count_lever("mistral")),
+    ]
+
+    # --- Our DB counts (recent 14 days) ---
+    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    db_rows = fetch_all_roles("company_slug", recent_cutoff)
+    db_counts: dict[str, int] = {}
+    for r in db_rows:
+        slug = r.get("company_slug") or ""
+        db_counts[slug] = db_counts.get(slug, 0) + 1
+
+    # --- Build comparison ---
+    results = []
+    for slug, name, fetch_fn in SOURCES:
+        live = fetch_fn()
+        captured = db_counts.get(slug, 0)
+        if isinstance(live, int):
+            gap = live - captured
+            pct = round((captured / live) * 100) if live > 0 else 0
+            results.append({
+                "company": name,
+                "live_on_career_page": live,
+                "captured_in_db": captured,
+                "missing": gap,
+                "capture_rate_pct": pct,
+                "status": "✅ good" if pct >= 95 else ("⚠️  partial" if pct >= 70 else "❌ low"),
+            })
+        else:
+            results.append({
+                "company": name,
+                "live_on_career_page": None,
+                "captured_in_db": captured,
+                "missing": None,
+                "capture_rate_pct": None,
+                "status": f"⚠️  fetch failed — {live}",
+            })
+
+    return {"audited_at": datetime.now(timezone.utc).isoformat(), "results": results}
 
 
 @app.get("/companies")
@@ -472,48 +579,48 @@ def get_unusual_signals():
     PATTERNS: list[tuple[list[str], str, str]] = [
         # Science / RLHF trainers (xAI, Anthropic)
         (["tutor", "biolog", "chemist", "physic", "earth sci", "geolog", "astro"],
-         "Teaching the AI science", "Hiring scientists to teach the model, not just build it"),
+         "Training AI on science", "Hiring scientists to teach the model — betting on scientific reasoning as a competitive edge"),
         # Data labeling / annotation
         (["annotator", "labeler", "data label", "rater", "content reviewer"],
-         "Human raters", "People reviewing and rating AI outputs to improve the model"),
+         "Building better training data", "More human reviewers means a smarter model — investing in quality, not just speed"),
         # Safety / red team
         (["red team", "redteam", "adversarial", "jailbreak", "safety evaluator"],
-         "AI breakers", "Hired specifically to find ways to trick or break the AI"),
+         "Testing for weaknesses", "Finding flaws before enterprise clients do — reduces liability and unlocks bigger deals"),
         # Trust, policy, ethics
         (["ethicist", "responsible ai", "trust & safety", "trust and safety",
           "content policy", "community policy"],
-         "Content safety", "Keeping harmful or policy-violating outputs off the platform"),
+         "Avoiding regulatory trouble", "Building guardrails needed to scale without getting fined or shut down"),
         # Government / regulatory affairs (OpenAI, Anthropic)
         (["policy", "government affairs", "regulatory affairs",
           "public affairs", "legislation", "government relation"],
-         "Government relations", "Building relationships with regulators and governments"),
+         "Going after government contracts", "Government AI contracts are among the largest deals available — this is the sales team for that"),
         # Legal / compliance
         (["lawyer", "attorney", "legal counsel", "general counsel",
           "compliance", "legal advisor"],
-         "Legal push", "Scaling into regulated industries or enterprise contracts"),
+         "Legal expansion", "Scaling legal capacity — a prerequisite for large enterprise deals and regulated markets"),
         # Infrastructure / data center ops (OpenAI Stargate, CoreWeave)
         (["data center", "facilities", "site reliability", "power",
           "mechanical engineer", "electrical engineer", "hvac"],
-         "Building data centers", "Constructing the physical hardware the AI runs on"),
+         "Building their own data centers", "Owning physical hardware instead of renting it — cuts long-term costs and reduces dependency on cloud providers"),
         # Creative domain experts (OpenAI Sora, image gen models)
         (["filmmaker", "cinematograph", "video producer", "creative director",
           "concept artist", "animator", "storyboard", "photographer"],
-         "Creative experts", "Filmmakers and artists teaching AI to understand media"),
+         "Expanding into video and image AI", "Hiring creatives to build visual AI — moving beyond text into a much bigger market"),
         # Medical / healthcare
         (["doctor", "physician", "nurse", "clinical", "radiolog", "patholog"],
-         "Medical experts", "Doctors and clinicians building AI for healthcare use"),
+         "Entering healthcare", "Hiring doctors and clinicians — healthcare AI commands strong pricing and high switching costs"),
         # Economics research
         (["economist", "economic research", "market design", "welfare"],
-         "Economists", "Modeling pricing, markets, or the economic impact of AI"),
+         "Pricing and monetization strategy", "Hiring economists to design how they charge — a sign they're thinking seriously about revenue models"),
         # Alignment / safety research (distinct from red team)
         (["alignment", "interpretab", "mechanistic", "scalable oversight"],
-         "AI safety research", "Making sure AI stays predictable and under human control"),
+         "Betting on long-term AI safety", "Deep research into keeping AI predictable and under control — signals how seriously they take what comes next"),
         # Robotics / physical AI
         (["robotics", "mechatronics", "actuator", "embodied", "manipulation"],
-         "Robot builders", "Moving AI from software into physical machines and arms"),
+         "Moving AI into the physical world", "Robots and hardware — expanding from software into physical products with high barriers to copy"),
         # Aviation / aerospace
         (["pilot", "aviation", "aerospace", "flight"],
-         "Aviation hires", "Pilots and aerospace experts — likely for simulation or defense data"),
+         "Defense and simulation", "Aviation hires point to government defense contracts or building physical-world simulation data"),
     ]
 
 

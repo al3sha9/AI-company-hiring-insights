@@ -156,7 +156,7 @@ export default async function Home({ searchParams }: HomeProps) {
         <div className="max-w-2xl">
           <div className="flex items-baseline gap-2.5">
             <h1 className="text-2xl font-semibold tracking-normal text-ink">
-              AI Hiring Signals
+              AI Insights
             </h1>
             <a 
               href="https://100xbetter.ai" 
@@ -261,8 +261,8 @@ export default async function Home({ searchParams }: HomeProps) {
         </section>
       )}
 
-      {/* --- Company table + Mohamed's Read --- */}
-      <section className="mt-6 grid gap-4 xl:grid-cols-[1.6fr_0.9fr]">
+      {/* --- Company table --- */}
+      <section className="mt-6">
         <div className="rounded-lg border border-line bg-white shadow-hairline">
           <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
             <div>
@@ -286,7 +286,7 @@ export default async function Home({ searchParams }: HomeProps) {
                   <th className="px-4 py-3 font-medium">WoW change</th>
                   <th className="px-4 py-3 font-medium">Top growing category</th>
                   <th className="px-4 py-3 font-medium">Top hiring location</th>
-                  <th className="px-4 py-3 font-medium">Surprise hire</th>
+                  <th className="px-4 py-3 font-medium">Signal</th>
                 </tr>
               </thead>
               <tbody>
@@ -370,10 +370,11 @@ export default async function Home({ searchParams }: HomeProps) {
           </div>
         </div>
 
-        {/* Mohamed's Read — single authored opinion card */}
+        {/* Mohamed's Read — commented out, re-enable when ready
         <aside>
           <MohamedsRead />
         </aside>
+        */}
       </section>
 
 

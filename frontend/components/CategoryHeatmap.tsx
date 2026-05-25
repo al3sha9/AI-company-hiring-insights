@@ -27,7 +27,7 @@ export function CategoryHeatmap({ companies, matrix }: CategoryHeatmapProps) {
 
   // Shorten company names for column headers
   const shortName = (name: string) =>
-    name.replace(" AI", "").replace("Microsoft", "MSFT").replace("CoreWeave", "CW");
+    name.replace(" AI", "").replace("Microsoft", "MSFT");
 
   return (
     <div className="overflow-x-auto">

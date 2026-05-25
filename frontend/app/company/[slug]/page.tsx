@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: CompanyPageProps) {
   try {
     const company = await getCompany(slug);
     return {
-      title: `${company.name} - AI Hiring Signals`,
+      title: `${company.name} - AI Insights`,
       description: `Hiring signal analysis for ${company.name}.`,
     };
   } catch {

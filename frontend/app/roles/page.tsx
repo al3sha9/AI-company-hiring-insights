@@ -11,7 +11,7 @@ type RolesPageProps = {
 };
 
 export const metadata = {
-  title: "Roles - AI Hiring Signals",
+  title: "Roles - AI Insights",
   description: "Browse open AI company roles by company, category, and location."
 };
 

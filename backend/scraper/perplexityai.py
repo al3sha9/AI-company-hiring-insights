@@ -36,7 +36,8 @@ def scrape() -> list[RoleSchema]:
         logger.error("[%s] Failed to fetch Ashby jobs: %s", COMPANY_SLUG, exc)
         return []
 
-    job_postings = data.get("jobPostings", [])
+    # Ashby boards differ: OpenAI uses "jobs", Perplexity also uses "jobs" (not "jobPostings")
+    job_postings = data.get("jobs") or data.get("jobPostings") or []
     logger.info("[%s] Fetched %d postings", COMPANY_SLUG, len(job_postings))
 
     roles: list[RoleSchema] = []
