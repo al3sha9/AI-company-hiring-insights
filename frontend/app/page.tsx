@@ -21,6 +21,12 @@ type HomeProps = {
   }>;
 };
 
+type UnusualSignal = {
+  label: string;
+  count: number;
+  description: string;
+};
+
 export default async function Home({ searchParams }: HomeProps) {
   const filters = await searchParams;
 
@@ -36,7 +42,7 @@ export default async function Home({ searchParams }: HomeProps) {
   const [heatmapData, seniority, unusualSignals] = await Promise.all([
     getCategoryMatrix().catch(() => ({ companies: [], matrix: [] })),
     getCategorySeniority().catch(() => []),
-    getUnusualSignals().catch(() => ({})),
+    getUnusualSignals().catch(() => ({} as Record<string, UnusualSignal>)),
   ]);
 
 
@@ -200,7 +206,7 @@ export default async function Home({ searchParams }: HomeProps) {
           value={
             hasHistory
               ? `${Number(weightedWowChange) >= 0 ? "+" : ""}${weightedWowChange}%`
-              : "—"
+              : "N/A"
           }
         />
         <MetricCard
@@ -359,7 +365,7 @@ export default async function Home({ searchParams }: HomeProps) {
                             <p className="mt-1 text-xs text-subtle">{sig.description}</p>
                           </div>
                         ) : (
-                          <span className="text-xs text-subtle">—</span>
+                          <span className="text-xs text-subtle">N/A</span>
                         );
                       })()}
                     </td>
@@ -370,7 +376,7 @@ export default async function Home({ searchParams }: HomeProps) {
           </div>
         </div>
 
-        {/* Mohamed's Read — commented out, re-enable when ready
+        {/* Mohamed's Read - commented out, re-enable when ready
         <aside>
           <MohamedsRead />
         </aside>
@@ -535,10 +541,10 @@ function MohamedsRead() {
       {/* Opinion body */}
       <div className="mt-4 space-y-3 text-sm leading-6 text-ink">
         <p>
-          The surge in senior engineering roles isn&#39;t just headcount — it&#39;s a bet on compound capability. When companies like OpenAI and Anthropic hire at the senior level, they&#39;re not filling seats, they&#39;re assembling the people who will define their next 3 years of product.
+          The surge in senior engineering roles isn&#39;t just headcount. It&#39;s a bet on compound capability. When companies like OpenAI and Anthropic hire at the senior level, they&#39;re not filling seats, they&#39;re assembling the people who will define their next 3 years of product.
         </p>
         <p>
-          The US concentration makes sense right now, but watch for it to shift. Compute costs and regulatory pressure are going to push more infra roles toward regions with favorable energy policy — Canada, the Nordics, the Gulf.
+          The US concentration makes sense right now, but watch for it to shift. Compute costs and regulatory pressure are going to push more infra roles toward regions with favorable energy policy, including Canada, the Nordics, and the Gulf.
         </p>
         <p className="text-subtle">
           Updated manually · May 2025

@@ -95,7 +95,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
 
   const narrative =
     roles.length > 0
-      ? `${company.name} is concentrating ${topCategoryPct}% of open roles in ${topCategory}, with ${topLocationPct}% of positions based in ${topLocation}. ${seniorPct}% of roles are senior-level — a signal of ${signalVerb}.${remotePct > 0 ? ` ${remotePct}% of roles are offered remotely.` : ""}`
+      ? `${company.name} is concentrating ${topCategoryPct}% of open roles in ${topCategory}, with ${topLocationPct}% of positions based in ${topLocation}. ${seniorPct}% of roles are senior-level, a signal of ${signalVerb}.${remotePct > 0 ? ` ${remotePct}% of roles are offered remotely.` : ""}`
       : "Run the scraper to generate a hiring signal for this company.";
 
   return (
@@ -140,7 +140,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
         <Stat label="Open roles" value={currentOpenRoles.toLocaleString()} />
         <Stat
           label="WoW change"
-          value={trendValues.length > 1 ? `${wowChange >= 0 ? "+" : ""}${wowChange}%` : "—"}
+          value={trendValues.length > 1 ? `${wowChange >= 0 ? "+" : ""}${wowChange}%` : "N/A"}
         />
         <Stat label="Roles on record" value={roles.length.toLocaleString()} />
         <div className="rounded-lg border border-line bg-white p-4 shadow-hairline">
@@ -156,7 +156,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
                 </div>
               ))
             ) : (
-              <span className="text-xs text-subtle">—</span>
+              <span className="text-xs text-subtle">N/A</span>
             )}
           </div>
         </div>
@@ -226,7 +226,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
           </div>
         </div>
 
-        {/* Latest roles — real API data, no more mock */}
+        {/* Latest roles - real API data, no more mock */}
         <div className="rounded-lg border border-line bg-white p-4 shadow-hairline">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -315,12 +315,12 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
                       {role.title}
                     </a>
                   </td>
-                  <td className="px-4 py-3 text-muted">{role.category || "—"}</td>
+                  <td className="px-4 py-3 text-muted">{role.category || "N/A"}</td>
                   <td className="px-4 py-3 text-muted">
-                    {role.location || role.country || "—"}
+                    {role.location || role.country || "N/A"}
                   </td>
-                  <td className="px-4 py-3 text-muted">{role.seniority || "—"}</td>
-                  <td className="px-4 py-3 text-muted">{role.work_mode || "—"}</td>
+                  <td className="px-4 py-3 text-muted">{role.seniority || "N/A"}</td>
+                  <td className="px-4 py-3 text-muted">{role.work_mode || "N/A"}</td>
                 </tr>
               ))}
             </tbody>

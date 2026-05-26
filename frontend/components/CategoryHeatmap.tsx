@@ -60,7 +60,7 @@ export function CategoryHeatmap({ companies, matrix }: CategoryHeatmapProps) {
                     <div
                       className={`flex h-8 items-center justify-center rounded text-xs font-medium tabular-nums ${cellStyle(count, maxCell)}`}
                     >
-                      {count > 0 ? count : "—"}
+                      {count > 0 ? count : "N/A"}
                     </div>
                   </td>
                 );

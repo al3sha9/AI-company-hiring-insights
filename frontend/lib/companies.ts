@@ -13,7 +13,7 @@ export const COMPANY_DOMAINS: Record<string, string> = {
 export function getLogoUrl(slug: string): string | null {
   const domain = COMPANY_DOMAINS[slug];
   if (!domain) return null;
-  // logo.dev image API — optionally authenticated via NEXT_PUBLIC_LOGO_DEV_TOKEN
+  // logo.dev image API - optionally authenticated via NEXT_PUBLIC_LOGO_DEV_TOKEN
   const token = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN;
   return token
     ? `https://img.logo.dev/${domain}?token=${token}`

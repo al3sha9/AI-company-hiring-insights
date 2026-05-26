@@ -579,13 +579,13 @@ def get_unusual_signals():
     PATTERNS: list[tuple[list[str], str, str]] = [
         # Science / RLHF trainers (xAI, Anthropic)
         (["tutor", "biolog", "chemist", "physic", "earth sci", "geolog", "astro"],
-         "Training AI on science", "Hiring scientists to teach the model — betting on scientific reasoning as a competitive edge"),
+         "Training AI on science", "Hiring scientists to teach the model, betting on scientific reasoning as a competitive edge"),
         # Data labeling / annotation
         (["annotator", "labeler", "data label", "rater", "content reviewer"],
-         "Building better training data", "More human reviewers means a smarter model — investing in quality, not just speed"),
+         "Building better training data", "More human reviewers means a smarter model, investing in quality, not just speed"),
         # Safety / red team
         (["red team", "redteam", "adversarial", "jailbreak", "safety evaluator"],
-         "Testing for weaknesses", "Finding flaws before enterprise clients do — reduces liability and unlocks bigger deals"),
+         "Testing for weaknesses", "Finding flaws before enterprise clients do, reducing liability and unlocking bigger deals"),
         # Trust, policy, ethics
         (["ethicist", "responsible ai", "trust & safety", "trust and safety",
           "content policy", "community policy"],
@@ -593,31 +593,31 @@ def get_unusual_signals():
         # Government / regulatory affairs (OpenAI, Anthropic)
         (["policy", "government affairs", "regulatory affairs",
           "public affairs", "legislation", "government relation"],
-         "Going after government contracts", "Government AI contracts are among the largest deals available — this is the sales team for that"),
+         "Going after government contracts", "Government AI contracts are among the largest deals available, and this is the sales team for that"),
         # Legal / compliance
         (["lawyer", "attorney", "legal counsel", "general counsel",
           "compliance", "legal advisor"],
-         "Legal expansion", "Scaling legal capacity — a prerequisite for large enterprise deals and regulated markets"),
+         "Legal expansion", "Scaling legal capacity, a prerequisite for large enterprise deals and regulated markets"),
         # Infrastructure / data center ops (OpenAI Stargate, CoreWeave)
         (["data center", "facilities", "site reliability", "power",
           "mechanical engineer", "electrical engineer", "hvac"],
-         "Building their own data centers", "Owning physical hardware instead of renting it — cuts long-term costs and reduces dependency on cloud providers"),
+         "Building their own data centers", "Owning physical hardware instead of renting it cuts long-term costs and reduces dependency on cloud providers"),
         # Creative domain experts (OpenAI Sora, image gen models)
         (["filmmaker", "cinematograph", "video producer", "creative director",
           "concept artist", "animator", "storyboard", "photographer"],
-         "Expanding into video and image AI", "Hiring creatives to build visual AI — moving beyond text into a much bigger market"),
+         "Expanding into video and image AI", "Hiring creatives to build visual AI means moving beyond text into a much bigger market"),
         # Medical / healthcare
         (["doctor", "physician", "nurse", "clinical", "radiolog", "patholog"],
-         "Entering healthcare", "Hiring doctors and clinicians — healthcare AI commands strong pricing and high switching costs"),
+         "Entering healthcare", "Hiring doctors and clinicians points toward healthcare AI, a market with strong pricing and high switching costs"),
         # Economics research
         (["economist", "economic research", "market design", "welfare"],
-         "Pricing and monetization strategy", "Hiring economists to design how they charge — a sign they're thinking seriously about revenue models"),
+         "Pricing and monetization strategy", "Hiring economists to design how they charge signals serious work on revenue models"),
         # Alignment / safety research (distinct from red team)
         (["alignment", "interpretab", "mechanistic", "scalable oversight"],
-         "Betting on long-term AI safety", "Deep research into keeping AI predictable and under control — signals how seriously they take what comes next"),
+         "Betting on long-term AI safety", "Deep research into keeping AI predictable and under control signals how seriously they take what comes next"),
         # Robotics / physical AI
         (["robotics", "mechatronics", "actuator", "embodied", "manipulation"],
-         "Moving AI into the physical world", "Robots and hardware — expanding from software into physical products with high barriers to copy"),
+         "Moving AI into the physical world", "Robots and hardware expand the company from software into physical products with high barriers to copy"),
         # Aviation / aerospace
         (["pilot", "aviation", "aerospace", "flight"],
          "Defense and simulation", "Aviation hires point to government defense contracts or building physical-world simulation data"),
@@ -645,5 +645,4 @@ def get_unusual_signals():
             result[slug] = best
 
     return result
-
 

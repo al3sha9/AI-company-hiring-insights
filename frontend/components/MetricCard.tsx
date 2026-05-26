@@ -14,7 +14,7 @@ export function MetricCard({ label, value, change, detail, href }: MetricCardPro
     change.startsWith("Needs") ||
     change.startsWith("Refresh") ||
     change.startsWith("Monitoring") ||
-    change === "—";
+    change === "N/A";
 
   const pillClass = isNeutral
     ? "bg-stone-100 text-muted"
@@ -29,17 +29,17 @@ export function MetricCard({ label, value, change, detail, href }: MetricCardPro
         {label}
       </div>
 
-      {/* Value — hero number/text */}
+      {/* Value - hero number/text */}
       <div className="text-2xl font-semibold leading-none text-ink">{value}</div>
 
-      {/* Change pill — own row, never competes with value */}
+      {/* Change pill - own row, never competes with value */}
       <div>
         <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${pillClass}`}>
           {change}
         </span>
       </div>
 
-      {/* Detail — pushed to bottom */}
+      {/* Detail - pushed to bottom */}
       <p className="mt-auto text-xs leading-5 text-muted">{detail}</p>
     </div>
   );
