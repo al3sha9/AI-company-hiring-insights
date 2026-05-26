@@ -1,16 +1,12 @@
 import Link from "next/link";
-import type { Role } from "@/lib/data";
-import { companies, getRoleHref } from "@/lib/data";
+import type { LiveRole } from "@/lib/api";
+import { getRoleHref } from "@/lib/data";
 
 type RoleTableProps = {
-  roles: Role[];
+  roles: LiveRole[];
 };
 
 export function RoleTable({ roles }: RoleTableProps) {
-  const companySlugs = new Map(
-    companies.map((company) => [company.name, company.slug])
-  );
-
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[900px] border-collapse text-left text-sm">
@@ -21,7 +17,7 @@ export function RoleTable({ roles }: RoleTableProps) {
             <th className="px-4 py-3 font-medium">Category</th>
             <th className="px-4 py-3 font-medium">Location</th>
             <th className="px-4 py-3 font-medium">Seniority</th>
-            <th className="px-4 py-3 font-medium">Posted</th>
+            <th className="px-4 py-3 font-medium">Last seen</th>
           </tr>
         </thead>
         <tbody>
@@ -43,7 +39,7 @@ export function RoleTable({ roles }: RoleTableProps) {
               <td className="px-4 py-3">
                 <Link
                   className="text-muted underline-offset-4 hover:text-ink hover:underline"
-                  href={`/company/${companySlugs.get(role.company)}`}
+                  href={`/company/${role.companySlug}`}
                 >
                   {role.company}
                 </Link>
@@ -61,12 +57,13 @@ export function RoleTable({ roles }: RoleTableProps) {
                   className="text-muted underline-offset-4 hover:text-ink hover:underline"
                   href={getRoleHref({ country: role.country })}
                 >
-                  {role.location}, {role.country}
+                  {role.location}
+                  {role.country && role.location !== role.country ? `, ${role.country}` : ""}
                 </Link>
               </td>
               <td className="px-4 py-3 text-muted">{role.seniority}</td>
               <td className="px-4 py-3 tabular-nums text-muted">
-                {role.datePosted}
+                {role.lastSeenAt ? new Date(role.lastSeenAt).toLocaleDateString("en-US") : "N/A"}
               </td>
             </tr>
           ))}

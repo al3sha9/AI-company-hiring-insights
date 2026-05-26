@@ -3,15 +3,8 @@ import { MetricCard } from "@/components/MetricCard";
 import { FilterBar } from "@/components/FilterBar";
 import { CategoryHeatmap } from "@/components/CategoryHeatmap";
 import { CompanyLogo } from "@/components/CompanyLogo";
+import { getBriefing } from "@/lib/api";
 import { getRoleHref } from "@/lib/data";
-import {
-  getCompanies,
-  getCategories,
-  getLocations,
-  getCategoryMatrix,
-  getCategorySeniority,
-  getUnusualSignals,
-} from "@/lib/api";
 
 type HomeProps = {
   searchParams: Promise<{
@@ -21,429 +14,308 @@ type HomeProps = {
   }>;
 };
 
-type UnusualSignal = {
-  label: string;
-  count: number;
-  description: string;
-};
-
 export default async function Home({ searchParams }: HomeProps) {
   const filters = await searchParams;
+  const briefing = await getBriefing();
 
-  // Two-wave fetch: critical data first, enrichment second.
-  // Prevents macOS socket saturation (EAGAIN/Errno 35) from 6 simultaneous
-  // Supabase connections firing at once.
-  const [apiCompanies, apiCategories, apiLocations] = await Promise.all([
-    getCompanies(),
-    getCategories(),
-    getLocations(),
-  ]);
+  const lastUpdated = briefing.lastUpdated
+    ? new Date(briefing.lastUpdated).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZoneName: "short",
+      })
+    : "Not yet scraped";
 
-  const [heatmapData, seniority, unusualSignals] = await Promise.all([
-    getCategoryMatrix().catch(() => ({ companies: [], matrix: [] })),
-    getCategorySeniority().catch(() => []),
-    getUnusualSignals().catch(() => ({} as Record<string, UnusualSignal>)),
-  ]);
+  const companies = briefing.companies.map((company) => ({
+    slug: company.slug,
+    name: company.name,
+  }));
+  const countries = briefing.locations.map((location) => location.country);
 
-
-  // --- Overall metrics ---
-  const totalOpenRoles = apiCompanies.reduce(
-    (acc: number, c: any) => acc + c.current_roles,
-    0
-  );
-  const previousOpenRoles = apiCompanies.reduce(
-    (acc: number, c: any) => acc + c.previous_roles,
-    0
-  );
-  const totalChange = totalOpenRoles - previousOpenRoles;
-  const hasHistory = apiCompanies.some(
-    (c: any) => c.previous_roles !== c.current_roles || c.change !== 0
-  );
-  const weightedWowChange =
-    previousOpenRoles > 0
-      ? ((totalChange / previousOpenRoles) * 100).toFixed(1)
-      : 0;
-
-  const wowChangeLabel = !hasHistory
-    ? "Needs 2 scrapes 7+ days apart"
-    : totalChange >= 0
-    ? `+${totalChange} roles vs prior period`
-    : `${totalChange} roles vs prior period`;
-
-  const totalRolesChange =
-    totalChange === 0 && !hasHistory
-      ? "Refresh after 7+ days for change data"
-      : totalChange > 0
-      ? `+${totalChange} since last period`
-      : totalChange < 0
-      ? `${totalChange} since last period`
-      : "No change since last scrape";
-
-  const lastUpdated =
-    apiCompanies.length > 0 && apiCompanies[0].scraped_at
-      ? new Date(apiCompanies[0].scraped_at).toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          timeZoneName: "short",
-        })
-      : "Not yet scraped";
-
-  // --- Sorted / derived ---
-  const fastestGrowingCompany =
-    [...apiCompanies].sort((a, b) => b.change_pct - a.change_pct)[0] ||
-    apiCompanies[0] || { name: "N/A", slug: "", change_pct: 0, current_roles: 0 };
-
-  // Build top category per company from heatmap data (most roles in any single category)
-  const topCategoryByCompany: Record<string, string> = {};
-  for (const row of heatmapData.matrix) {
-    for (const companyName of heatmapData.companies) {
-      const count = row.companies[companyName] || 0;
-      if (count === 0) continue;
-      const currentCat = topCategoryByCompany[companyName];
-      const currentCount = currentCat
-        ? (heatmapData.matrix.find((r) => r.category === currentCat)?.companies[companyName] || 0)
-        : 0;
-      if (count > currentCount) topCategoryByCompany[companyName] = row.category;
-    }
-  }
-
-  let rankedCompanies = [...apiCompanies]
-    .sort((a, b) => b.change_pct - a.change_pct)
-    .map((c: any) => ({
-      slug: c.slug,
-      name: c.name,
-      openRoles: c.current_roles,
-      wowChange: c.change_pct,
-      topGrowingCategory: topCategoryByCompany[c.name] || "Software Engineering",
-      topHiringLocation: "Remote",
-      signal: "Active",
-    }));
-
-  if (filters.company) {
-    rankedCompanies = rankedCompanies.filter((c) => c.name === filters.company);
-  }
-
-  const topCategory = apiCategories[0] || { category: "N/A", growth: 0 };
-  const maxCategoryGrowth = Math.max(
-    ...apiCategories.map((item: any) => item.growth),
-    1
-  );
-
-  const topLocation = apiLocations[0] || {
-    country: "N/A",
-    roles: 0,
-    topCompany: "N/A",
-  };
-  const maxLocationRoles = Math.max(
-    ...apiLocations.map((l: any) => l.roles),
-    1
-  );
+  const strategicMoves = filters.company
+    ? briefing.strategicMoves.filter((move) => move.company === filters.company)
+    : briefing.strategicMoves;
 
   const displayedLocations = filters.country
-    ? apiLocations.filter((l: any) => l.country === filters.country)
-    : apiLocations;
+    ? briefing.locations.filter((location) => location.country === filters.country)
+    : briefing.locations;
 
-  const countries = apiLocations.map((l: any) => l.country);
-
-  // --- Suggestion 3: seniority lookup per category ---
-  const seniorityMap = new Map(seniority.map((s: any) => [s.category, s]));
-  const topCatSeniority = seniorityMap.get(topCategory.category) as
-    | { senior_pct: number }
-    | undefined;
-
-
+  const maxLocationRoles = Math.max(
+    ...displayedLocations.map((location) => location.roles),
+    1
+  );
+  const maxCategoryCount = Math.max(
+    ...briefing.categoryMomentum.map((item) => item.count),
+    1
+  );
 
   return (
     <main className="mx-auto min-h-screen max-w-8xl px-4 py-5 sm:px-6 lg:px-10 xl:px-14">
       <header className="flex flex-col gap-5 border-b border-line pb-5 lg:flex-row lg:items-end lg:justify-between">
-        <div className="max-w-2xl">
+        <div className="max-w-3xl">
           <div className="flex items-baseline gap-2.5">
             <h1 className="text-2xl font-semibold tracking-normal text-ink">
-              AI Insights
+              AI Hiring Signals
             </h1>
-            <a 
-              href="https://100xbetter.ai" 
-              target="_blank" 
-              rel="noreferrer" 
-              className="text-sm font-medium text-subtle hover:text-ink transition-colors"
+            <a
+              href="https://100xbetter.ai"
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm font-medium text-subtle transition-colors hover:text-ink"
             >
               by 100xbetter.ai
             </a>
           </div>
           <p className="mt-2 text-sm leading-6 text-muted">
-            Track where AI companies are hiring, what roles are growing, and
-            what strategy it signals.
+            Strategy intelligence from the roles AI companies are actively
+            hiring for.
           </p>
           <p className="mt-2 text-xs text-subtle">
             Data last scraped {lastUpdated}.
           </p>
         </div>
-        <FilterBar
-          companies={apiCompanies.map((c: any) => ({
-            slug: c.slug,
-            name: c.name,
-          }))}
-          countries={countries}
-        />
+        <FilterBar companies={companies} countries={countries} />
       </header>
 
-      {/* --- Metric cards (Suggestions 3 & 5) --- */}
-      <section className="grid gap-3 py-5 sm:grid-cols-2 lg:grid-cols-5">
+      <section className="py-5">
+        <div className="rounded-lg border border-line bg-white p-5 shadow-hairline">
+          <div className="text-xs font-medium uppercase tracking-[0.08em] text-muted">
+            Weekly market read
+          </div>
+          <p className="mt-3 max-w-5xl text-lg leading-8 text-ink">
+            {briefing.marketRead}
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            {briefing.executiveCards.map((card) => (
+              <MetricCard
+                key={card.label}
+                change={card.detail}
+                label={card.label}
+                value={card.value}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-3 pb-5 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          change={totalRolesChange}
-          detail={`Tracked across ${apiCompanies.length} AI companies.`}
+          change={
+            briefing.summary.hasHistory
+              ? `${briefing.summary.totalChange >= 0 ? "+" : ""}${briefing.summary.totalChange} roles`
+              : "Needs 2 scrapes"
+          }
           href="/roles"
-          label="Total open roles"
-          value={totalOpenRoles.toLocaleString()}
+          label="Total active roles"
+          value={briefing.summary.totalOpenRoles.toLocaleString()}
         />
         <MetricCard
-          change={wowChangeLabel}
-          detail="Momentum is concentrated in infra, data center, and robotics."
-          label="Week-over-week change"
-          value={
-            hasHistory
-              ? `${Number(weightedWowChange) >= 0 ? "+" : ""}${weightedWowChange}%`
-              : "N/A"
-          }
-        />
-        <MetricCard
-          change={
-            fastestGrowingCompany.change_pct > 0
-              ? `+${fastestGrowingCompany.change_pct}% this period`
-              : "Monitoring"
-          }
-          detail={`${fastestGrowingCompany.name} leads open role count this week.`}
-          href={`/company/${fastestGrowingCompany.slug}`}
-          label="Fastest growing company"
-          value={fastestGrowingCompany.name}
-        />
-        {/* Suggestion 5: Momentum category replaces Fastest growing role */}
-        <MetricCard
-          change={
-            topCategory.growth > 0
-              ? `${topCategory.growth} open roles`
-              : "Monitoring"
-          }
-          detail="The single category with the most active hiring right now."
-          href={getRoleHref({ category: topCategory.category })}
+          change="Current mix"
+          href={getRoleHref({ category: briefing.categories[0]?.category })}
           label="Momentum category"
-          value={topCategory.category}
+          value={briefing.categories[0]?.category || "N/A"}
+        />
+        <MetricCard
+          change={`${briefing.summary.topLocation.roles || 0} active roles`}
+          href={getRoleHref({ country: briefing.summary.topLocation.country })}
+          label="Top hiring location"
+          value={briefing.summary.topLocation.country}
         />
         <MetricCard
           change={
-            topLocation.roles > 0
-              ? `${topLocation.roles} open roles`
-              : "Monitoring"
+            briefing.summary.hasHistory
+              ? `${briefing.summary.weightedChangePct >= 0 ? "+" : ""}${briefing.summary.weightedChangePct}%`
+              : "Not enough history"
           }
-          detail={`${topLocation.topCompany} is the top hiring company here.`}
-          href={getRoleHref({ country: topLocation.country })}
-          label="Top hiring location"
-          value={topLocation.country}
+          label="Hiring momentum"
+          value="Period change"
         />
       </section>
 
-      {/* --- Where each company is placing its bets heatmap --- */}
-      {heatmapData.matrix.length > 0 && (
+      {briefing.unusualCards.length > 0 && (
+        <section className="pb-5">
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-ink">
+              Non-obvious signals
+            </h2>
+            <p className="mt-1 text-xs text-muted">
+              The most useful reads are role patterns that would not appear in a
+              normal software hiring dashboard.
+            </p>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-3">
+            {briefing.unusualCards.slice(0, 3).map((signal) => (
+              <article
+                className="rounded-lg border border-line bg-white p-4 shadow-hairline"
+                key={`${signal.slug}-${signal.label}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-medium uppercase tracking-[0.08em] text-muted">
+                      {signal.company}
+                    </div>
+                    <h3 className="mt-2 text-base font-semibold text-ink">
+                      {signal.label}
+                    </h3>
+                  </div>
+                  <span className="max-w-[220px] rounded-full bg-amber-50 px-2.5 py-1 text-right text-xs font-medium text-amber-800">
+                    {signal.evidence}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-muted">
+                  {signal.description}
+                </p>
+                <div className="mt-4 space-y-2">
+                  {signal.examples.map((role) => (
+                    <a
+                      className="block truncate text-xs font-medium text-ink underline-offset-4 hover:underline"
+                      href={role.sourceUrl}
+                      key={role.id}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {role.title}
+                    </a>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="rounded-lg border border-line bg-white shadow-hairline">
+        <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
+          <div>
+            <h2 className="text-base font-semibold text-ink">
+              Strategic moves
+            </h2>
+            <p className="mt-1 text-xs text-muted">
+              The executive read on what hiring evidence suggests each company
+              is prioritizing.
+            </p>
+          </div>
+          <span className="text-xs font-medium text-accent">
+            Evidence first
+          </span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[960px] border-collapse text-left text-sm">
+            <thead>
+              <tr className="border-b border-line text-xs uppercase tracking-[0.08em] text-muted">
+                <th className="px-4 py-3 font-medium">Company</th>
+                <th className="px-4 py-3 font-medium">Move</th>
+                <th className="px-4 py-3 font-medium">Evidence</th>
+                <th className="px-4 py-3 font-medium">Change</th>
+                <th className="px-4 py-3 font-medium">Why CEO cares</th>
+                <th className="px-4 py-3 font-medium">Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {strategicMoves.map((move, index) => (
+                <tr
+                  className="border-b border-line last:border-0 hover:bg-selected/60"
+                  key={move.slug}
+                >
+                  <td className="px-4 py-3">
+                    <Link
+                      className="flex items-center gap-2.5 font-medium text-ink"
+                      href={`/company/${move.slug}`}
+                    >
+                      <span className="w-5 text-xs text-subtle">{index + 1}</span>
+                      <CompanyLogo name={move.company} size={20} slug={move.slug} />
+                      {move.company}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 font-medium text-ink">{move.move}</td>
+                  <td className="px-4 py-3 text-muted">
+                    <div>{move.evidence}</div>
+                    {(move.evidenceExamples ?? []).length > 0 && (
+                      <div className="mt-1 space-y-0.5 text-xs text-subtle">
+                        {(move.evidenceExamples ?? []).slice(0, 2).map((example) => (
+                          <div className="max-w-xs truncate" key={example}>
+                            {example}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-muted">{move.changeLabel}</td>
+                  <td className="max-w-md px-4 py-3 text-muted">
+                    {move.investorRead}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-800">
+                      {move.confidence}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {briefing.heatmap.matrix.length > 0 && (
         <section className="rounded-lg border border-line bg-white shadow-hairline">
           <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
             <div>
               <h2 className="text-base font-semibold text-ink">
-                Where each company is placing its bets
+                Company bet map
               </h2>
               <p className="mt-1 text-xs text-muted">
-                Role concentration by category. Darker cell = more roles.
+                Where AI companies are placing hiring concentration by
+                category.
               </p>
             </div>
           </div>
           <div className="p-4">
             <CategoryHeatmap
-              companies={heatmapData.companies}
-              matrix={heatmapData.matrix}
+              companies={briefing.heatmap.companies}
+              matrix={briefing.heatmap.matrix}
             />
           </div>
         </section>
       )}
 
-      {/* --- Company table --- */}
-      <section className="mt-6">
-        <div className="rounded-lg border border-line bg-white shadow-hairline">
-          <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
-            <div>
-              <h2 className="text-base font-semibold text-ink">
-                Who is hiring fastest?
-              </h2>
-              <p className="mt-1 text-xs text-muted">
-                Ranked by 7-day open role growth.
-              </p>
-            </div>
-            <span className="text-xs font-medium text-accent">
-              Strategy signal first
-            </span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px] border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b border-line text-xs uppercase tracking-[0.08em] text-muted">
-                  <th className="px-4 py-3 font-medium">Company</th>
-                  <th className="px-4 py-3 font-medium">Open roles</th>
-                  <th className="px-4 py-3 font-medium">WoW change</th>
-                  <th className="px-4 py-3 font-medium">Top growing category</th>
-                  <th className="px-4 py-3 font-medium">Top hiring location</th>
-                  <th className="px-4 py-3 font-medium">Signal</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rankedCompanies.map((company, index) => (
-                  <tr
-                    className="border-b border-line last:border-0 hover:bg-selected/60"
-                    key={company.slug}
-                  >
-                    <td className="px-4 py-3">
-                      <Link
-                        className="flex items-center gap-2.5 font-medium text-ink"
-                        href={`/company/${company.slug}`}
-                      >
-                        <span className="w-5 text-xs text-subtle">
-                          {index + 1}
-                        </span>
-                        <CompanyLogo name={company.name} size={20} slug={company.slug} />
-                        {company.name}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 tabular-nums">
-                      {company.openRoles === 0 ? (
-                        <span className="rounded-full bg-selected px-2.5 py-1 text-xs text-muted">
-                          Scraper pending
-                        </span>
-                      ) : (
-                        <Link
-                          className="font-medium text-ink underline-offset-4 hover:underline"
-                          href={getRoleHref({ company: company.name })}
-                        >
-                          {company.openRoles}
-                        </Link>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 font-medium tabular-nums text-accent">
-                      {company.wowChange >= 0 ? "+" : ""}
-                      {company.wowChange}%
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        className="text-muted underline-offset-4 hover:text-ink hover:underline"
-                        href={getRoleHref({
-                          category: company.topGrowingCategory,
-                          company: company.name,
-                        })}
-                      >
-                        {company.topGrowingCategory}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        className="text-muted underline-offset-4 hover:text-ink hover:underline"
-                        href={getRoleHref({
-                          company: company.name,
-                          country: company.topHiringLocation,
-                        })}
-                      >
-                        {company.topHiringLocation}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      {(() => {
-                        const sig = unusualSignals[company.slug];
-                        return sig ? (
-                          <div>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
-                              {sig.label}
-                              <span className="font-normal opacity-70">({sig.count})</span>
-                            </span>
-                            <p className="mt-1 text-xs text-subtle">{sig.description}</p>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-subtle">N/A</span>
-                        );
-                      })()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Mohamed's Read - commented out, re-enable when ready
-        <aside>
-          <MohamedsRead />
-        </aside>
-        */}
-      </section>
-
-
-
-      {/* --- Category bars + Locations --- */}
-      <section className="grid gap-4 py-4 lg:grid-cols-2">
+      <section className="grid gap-4 py-5 lg:grid-cols-2">
         <div className="rounded-lg border border-line bg-white p-4 shadow-hairline">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-ink">
-              Role categories growing fastest
-            </h2>
-            <div className="flex items-center gap-3 text-xs text-subtle">
-              <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2 w-2 rounded-full bg-teal-500" />
-                Senior
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2 w-2 rounded-full bg-teal-200" />
-                Mid
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2 w-2 rounded-full bg-teal-50 border border-teal-200" />
-                Junior
-              </span>
-            </div>
-          </div>
-          <div className="mt-4 space-y-3">
-            {apiCategories.map((item: any) => {
-              const sen = seniorityMap.get(item.category) as
-                | { senior: number; mid: number; junior: number; total: number }
-                | undefined;
-              const total = sen?.total || item.growth || 1;
-              const seniorW = sen ? (sen.senior / total) * 100 : 0;
-              const midW = sen ? (sen.mid / total) * 100 : 100;
-              const juniorW = sen ? (sen.junior / total) * 100 : 0;
+          <h2 className="text-base font-semibold text-ink">
+            Category momentum
+          </h2>
+          <div className="mt-4 space-y-4">
+            {briefing.categoryMomentum.map((item) => {
+              const total = item.senior + item.mid + item.junior || item.count || 1;
+              const seniorWidth = (item.senior / total) * 100;
+              const midWidth = (item.mid / total) * 100;
+              const juniorWidth = (item.junior / total) * 100;
+              const countWidth = (item.count / maxCategoryCount) * 100;
               return (
                 <Link
-                  className="grid grid-cols-[minmax(0,140px)_1fr_44px] items-center gap-3 text-sm sm:grid-cols-[160px_1fr_48px]"
+                  className="block"
                   href={getRoleHref({ category: item.category })}
                   key={item.category}
                 >
-                  <div className="truncate text-muted hover:text-ink">
-                    {item.category}
+                  <div className="flex items-center justify-between gap-4 text-sm">
+                    <span className="font-medium text-ink">{item.category}</span>
+                    <span className="tabular-nums text-muted">{item.count}</span>
                   </div>
-                  {/* Suggestion 3: split bar */}
-                  <div className="flex h-2 overflow-hidden rounded-full bg-stone-100">
+                  <div className="mt-2 h-2 rounded-full bg-stone-100">
                     <div
-                      className="h-2 bg-teal-500"
-                      style={{ width: `${seniorW}%` }}
-                    />
-                    <div
-                      className="h-2 bg-teal-200"
-                      style={{ width: `${midW}%` }}
-                    />
-                    <div
-                      className="h-2 bg-teal-50"
-                      style={{ width: `${juniorW}%` }}
-                    />
+                      className="flex h-2 overflow-hidden rounded-full"
+                      style={{ width: `${countWidth}%` }}
+                    >
+                      <div className="h-2 bg-teal-500" style={{ width: `${seniorWidth}%` }} />
+                      <div className="h-2 bg-teal-200" style={{ width: `${midWidth}%` }} />
+                      <div className="h-2 bg-teal-50" style={{ width: `${juniorWidth}%` }} />
+                    </div>
                   </div>
-                  {/* Suggestion 1: count pill */}
-                  <div className="text-right font-medium tabular-nums text-ink">
-                    {item.growth}
-                  </div>
+                  <p className="mt-2 text-xs leading-5 text-muted">
+                    {item.interpretation}
+                  </p>
                 </Link>
               );
             })}
@@ -452,104 +324,49 @@ export default async function Home({ searchParams }: HomeProps) {
 
         <div className="rounded-lg border border-line bg-white p-4 shadow-hairline">
           <h2 className="text-base font-semibold text-ink">
-            Top hiring locations
+            Geographic expansion
           </h2>
           <div className="mt-4 divide-y divide-line">
-            {displayedLocations.map((location: any, index: number) => {
-              const topCompany = apiCompanies.find(
-                (company: any) => company.name === location.topCompany
-              );
-              return (
-                <div
-                  className="grid grid-cols-[22px_1fr_auto] items-center gap-3 py-2.5 text-sm"
-                  key={location.country}
-                >
-                  <div className="text-xs text-subtle">{index + 1}</div>
-                  <div>
-                    <div className="flex items-center justify-between gap-3">
-                      <Link
-                        className="font-medium text-ink underline-offset-4 hover:underline"
-                        href={getRoleHref({ country: location.country })}
-                      >
-                        {location.country}
-                      </Link>
-                      {topCompany ? (
-                        <Link
-                          className="text-xs text-muted hover:text-ink"
-                          href={`/company/${topCompany.slug}`}
-                        >
-                          {location.topCompany}
-                        </Link>
-                      ) : (
-                        <span className="text-xs text-muted">
-                          {location.topCompany}
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-2 h-1.5 rounded-full bg-stone-100">
-                      <div
-                        className="h-1.5 rounded-full bg-accent"
-                        style={{
-                          width: `${(location.roles / maxLocationRoles) * 100}%`,
-                        }}
-                      />
-                    </div>
+            {displayedLocations.map((location, index) => (
+              <div
+                className="grid grid-cols-[22px_1fr_auto] items-center gap-3 py-2.5 text-sm"
+                key={location.country}
+              >
+                <div className="text-xs text-subtle">{index + 1}</div>
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <Link
+                      className="font-medium text-ink underline-offset-4 hover:underline"
+                      href={getRoleHref({ country: location.country })}
+                    >
+                      {location.country}
+                    </Link>
+                    <span className="text-xs text-muted">{location.topCompany}</span>
                   </div>
-                  <div className="text-right">
-                    <div className="font-medium tabular-nums text-ink">
-                      {location.roles}
-                    </div>
+                  <div className="mt-2 h-1.5 rounded-full bg-stone-100">
+                    <div
+                      className="h-1.5 rounded-full bg-accent"
+                      style={{ width: `${(location.roles / maxLocationRoles) * 100}%` }}
+                    />
                   </div>
                 </div>
-              );
-            })}
+                <div className="text-right font-medium tabular-nums text-ink">
+                  {location.roles}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
-
 
       <footer className="border-t border-line py-5 text-xs leading-5 text-subtle">
         <a className="font-medium text-ink" href="#methodology" id="methodology">
           Methodology
         </a>
-        : This prototype uses live data scraped from official company career
+        : This product uses live data scraped from official company career
         pages. Categories and strategy signals are inferred and should be
         treated as directional, not official company statements.
       </footer>
     </main>
-  );
-}
-
-function MohamedsRead() {
-  return (
-    <div className="rounded-lg border border-line bg-white p-5 shadow-hairline h-full">
-      {/* Header */}
-      <div className="flex items-start gap-3 border-b border-line pb-4">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-white">
-          M
-        </div>
-        <div>
-          <div className="text-xs font-medium uppercase tracking-[0.08em] text-muted">
-            Mohamed&#39;s Read
-          </div>
-          <p className="mt-0.5 text-xs text-subtle">
-            My personal take on what the hiring data actually signals.
-          </p>
-        </div>
-      </div>
-
-      {/* Opinion body */}
-      <div className="mt-4 space-y-3 text-sm leading-6 text-ink">
-        <p>
-          The surge in senior engineering roles isn&#39;t just headcount. It&#39;s a bet on compound capability. When companies like OpenAI and Anthropic hire at the senior level, they&#39;re not filling seats, they&#39;re assembling the people who will define their next 3 years of product.
-        </p>
-        <p>
-          The US concentration makes sense right now, but watch for it to shift. Compute costs and regulatory pressure are going to push more infra roles toward regions with favorable energy policy, including Canada, the Nordics, and the Gulf.
-        </p>
-        <p className="text-subtle">
-          Updated manually · May 2025
-        </p>
-      </div>
-    </div>
   );
 }

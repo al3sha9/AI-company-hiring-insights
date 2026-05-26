@@ -579,7 +579,7 @@ def get_unusual_signals():
     PATTERNS: list[tuple[list[str], str, str]] = [
         # Science / RLHF trainers (xAI, Anthropic)
         (["tutor", "biolog", "chemist", "physic", "earth sci", "geolog", "astro"],
-         "Training AI on science", "Hiring scientists to teach the model, betting on scientific reasoning as a competitive edge"),
+         "Building domain training pipelines", "Hiring tutors and domain experts points to human-generated training and evaluation data for model capability expansion"),
         # Data labeling / annotation
         (["annotator", "labeler", "data label", "rater", "content reviewer"],
          "Building better training data", "More human reviewers means a smarter model, investing in quality, not just speed"),
@@ -640,9 +640,336 @@ def get_unusual_signals():
             matched = [t for t in titles if any(kw in t for kw in keywords)]
             if len(matched) >= 2:
                 if best is None or len(matched) > best["count"]:
-                    best = {"label": label, "count": len(matched), "description": description}
+                    best = {
+                        "label": label,
+                        "count": len(matched),
+                        "description": description,
+                        "keywords": keywords,
+                        "matchedTitles": matched[:5],
+                    }
         if best:
             result[slug] = best
 
     return result
 
+
+def _clean_display_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return value.replace("—", "-").replace("–", "-")
+
+
+SIGNAL_EVIDENCE_LABELS = {
+    "Building domain training pipelines": "tutor, language, or domain expert roles",
+    "Building better training data": "annotation, labeling, or reviewer roles",
+    "Testing for weaknesses": "red team, adversarial, or safety evaluator roles",
+    "Avoiding regulatory trouble": "trust, safety, ethics, or content policy roles",
+    "Going after government contracts": "policy, public sector, or government affairs roles",
+    "Legal expansion": "legal, compliance, or counsel roles",
+    "Building their own data centers": "data center, power, facilities, or reliability roles",
+    "Expanding into video and image AI": "filmmaker, creative, animation, or visual AI roles",
+    "Entering healthcare": "doctor, clinical, radiology, or healthcare roles",
+    "Pricing and monetization strategy": "economics, market design, or monetization roles",
+    "Betting on long-term AI safety": "alignment, interpretability, or oversight roles",
+    "Moving AI into the physical world": "robotics, mechatronics, or embodied AI roles",
+    "Defense and simulation": "aviation, aerospace, pilot, or simulation roles",
+}
+
+
+def _signal_evidence(signal: dict) -> str:
+    label = SIGNAL_EVIDENCE_LABELS.get(signal["label"], "matched strategic-signal roles")
+    return f"{signal['count']} {label}"
+
+
+def _signal_move(company_name: str, signal: dict | None, top_category: str) -> str:
+    if not signal:
+        fallback_moves = {
+            "Amazon AGI": "Foundation-model engineering concentration",
+            "Perplexity": "Product engineering scale-up",
+        }
+        return fallback_moves.get(company_name, f"{top_category} concentration")
+
+    label = signal["label"]
+    if label == "Building their own data centers":
+        if company_name == "Nvidia":
+            return "AI infrastructure demand surge"
+        if company_name == "CoreWeave":
+            return "Data center capacity buildout"
+        return "Compute infrastructure control"
+    if label == "Building domain training pipelines":
+        return "Model training data pipeline"
+    if label == "Legal expansion":
+        return "Enterprise/legal maturation"
+    return label
+
+
+def _matched_role_examples(roles: list[dict], slug: str, signal: dict | None) -> list[dict]:
+    company_roles = [role for role in roles if role["companySlug"] == slug]
+    if signal:
+        keywords = signal.get("keywords", [])
+        matched = [
+            role for role in company_roles
+            if any(keyword in role["title"].lower() for keyword in keywords)
+        ]
+        if matched:
+            return matched[:3]
+    return company_roles[:3]
+
+
+def _confidence(signal: dict | None, company: dict, examples: list[dict]) -> str:
+    if signal:
+        count = signal.get("count") or 0
+        if count >= 10 and len(examples) >= 2:
+            return "High"
+        if count >= 4:
+            return "Medium"
+        return "Low"
+    return "Medium" if (company.get("current_roles") or 0) >= 25 else "Low"
+
+
+def _change_label(company: dict) -> str:
+    previous = company.get("previous_roles") or 0
+    change = company.get("change") or 0
+    change_pct = company.get("change_pct") or 0
+    if previous < 100 and abs(change_pct) > 200:
+        return "New baseline"
+    if change > 0:
+        return f"+{change} roles"
+    if change < 0:
+        return f"{change} roles"
+    return "Flat"
+
+
+@app.get("/roles")
+def get_roles(company: str = None, category: str = None, country: str = None):
+    """
+    Returns active roles in a frontend-friendly shape.
+    This keeps the roles view backed by live scraped data instead of mock JSON.
+    """
+    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    roles_data = fetch_all_roles(
+        "company_slug, title, category, location, country, seniority, work_mode, "
+        "source_url, first_seen_at, last_seen_at",
+        recent_cutoff,
+    )
+    companies_res = supabase.table("companies").select("slug, name").execute()
+    company_names = {c["slug"]: c["name"] for c in companies_res.data or []}
+
+    company_filter = company.lower() if company else None
+    category_filter = category.lower() if category else None
+    country_filter = country.lower() if country else None
+
+    result = []
+    for index, role in enumerate(roles_data):
+        company_name = company_names.get(role.get("company_slug"), role.get("company_slug") or "Unknown")
+        role_category = role.get("category") or "Uncategorized"
+        role_country = role.get("country") or "Unknown"
+
+        if company_filter and company_name.lower() != company_filter:
+            continue
+        if category_filter and role_category.lower() != category_filter:
+            continue
+        if country_filter and role_country.lower() != country_filter:
+            continue
+
+        result.append({
+            "id": f"{role.get('company_slug')}-{index}",
+            "company": _clean_display_text(company_name),
+            "companySlug": role.get("company_slug"),
+            "title": _clean_display_text(role.get("title")) or "Untitled role",
+            "category": _clean_display_text(role_category),
+            "location": _clean_display_text(role.get("location") or role_country),
+            "country": _clean_display_text(role_country),
+            "seniority": _clean_display_text(role.get("seniority")) or "Unknown",
+            "workMode": _clean_display_text(role.get("work_mode")) or "Unknown",
+            "sourceUrl": role.get("source_url") or "",
+            "firstSeenAt": role.get("first_seen_at"),
+            "lastSeenAt": role.get("last_seen_at"),
+        })
+
+    result.sort(key=lambda r: r.get("lastSeenAt") or "", reverse=True)
+    return result
+
+
+def _category_investor_read(category: str) -> str:
+    reads = {
+        "Infrastructure": "Compute remains a strategic constraint, so hiring here points to capacity expansion and platform control.",
+        "Data Center & Energy": "Physical infrastructure and power access are becoming board-level constraints for frontier AI.",
+        "Enterprise Sales": "Commercialization is moving from experiments toward repeatable enterprise deployment.",
+        "Government & Defense": "Public sector demand is becoming a more important revenue and distribution channel.",
+        "Safety & Policy": "Regulated enterprise adoption is pushing companies to build trust, policy, and compliance capacity.",
+        "Research": "The company is still investing in frontier capability rather than only distribution.",
+        "Robotics": "Hiring points to expansion from software into physical-world AI systems.",
+        "Product": "The company is packaging model capability into user-facing workflows.",
+    }
+    return reads.get(category, "Hiring concentration suggests this capability is becoming strategically important.")
+
+
+@app.get("/briefing")
+def get_briefing():
+    """
+    Executive briefing payload for CEOs and investors.
+    Bundles the dashboard's core data plus opinionated, rule-based reads.
+    """
+    companies = get_companies()
+    heatmap = get_category_matrix()
+    seniority = get_category_seniority()
+    unusual = get_unusual_signals()
+    roles = get_roles()
+
+    total_open_roles = sum(c.get("current_roles") or 0 for c in companies)
+    previous_open_roles = sum(c.get("previous_roles") or 0 for c in companies)
+    total_change = total_open_roles - previous_open_roles
+    has_history = any((c.get("previous_roles") != c.get("current_roles")) or c.get("change") for c in companies)
+    weighted_change_pct = round((total_change / previous_open_roles) * 100, 1) if previous_open_roles > 0 else 0
+
+    category_counts = Counter()
+    country_counts = Counter()
+    country_company_counts: dict[str, Counter] = {}
+    for role in roles:
+        category_counts[role["category"]] += 1
+        country_counts[role["country"]] += 1
+        country_company_counts.setdefault(role["country"], Counter())[role["company"]] += 1
+
+    categories = [
+        {"category": category, "growth": count, "count": count}
+        for category, count in category_counts.most_common()
+    ]
+
+    locations = []
+    for country, count in country_counts.most_common():
+        top_company, top_count = country_company_counts[country].most_common(1)[0]
+        locations.append({
+            "country": country,
+            "roles": count,
+            "growth": 0,
+            "topCompany": top_company,
+            "topCount": top_count,
+        })
+
+    top_category = categories[0] if categories else {"category": "N/A", "growth": 0}
+    top_location = locations[0] if locations else {"country": "N/A", "roles": 0, "topCompany": "N/A"}
+    fastest_company = max(companies, key=lambda c: c.get("change_pct") or 0) if companies else None
+
+    top_category_by_company: dict[str, str] = {}
+    for row in heatmap.get("matrix", []):
+        for company_name in heatmap.get("companies", []):
+            count = row["companies"].get(company_name, 0)
+            current_category = top_category_by_company.get(company_name)
+            current_count = 0
+            if current_category:
+                match = next((r for r in heatmap.get("matrix", []) if r["category"] == current_category), None)
+                current_count = match["companies"].get(company_name, 0) if match else 0
+            if count > current_count:
+                top_category_by_company[company_name] = row["category"]
+
+    strategic_moves = []
+    for company in sorted(companies, key=lambda c: ((c.get("change_pct") or 0), (c.get("current_roles") or 0)), reverse=True):
+        name = company["name"]
+        slug = company["slug"]
+        top_company_category = top_category_by_company.get(name, "Software Engineering")
+        signal = unusual.get(slug)
+        examples = _matched_role_examples(roles, slug, signal)
+        move = _signal_move(name, signal, top_company_category)
+        evidence = (
+            _signal_evidence(signal)
+            if signal
+            else f"{company.get('current_roles') or 0} open roles, led by {top_company_category}"
+        )
+        strategic_moves.append({
+            "company": name,
+            "slug": slug,
+            "move": move,
+            "evidence": evidence,
+            "evidenceExamples": [role["title"] for role in examples],
+            "investorRead": signal["description"] if signal else _category_investor_read(top_company_category),
+            "confidence": _confidence(signal, company, examples),
+            "changeLabel": _change_label(company),
+            "openRoles": company.get("current_roles") or 0,
+            "changePct": company.get("change_pct") or 0,
+            "topCategory": top_company_category,
+        })
+
+    unusual_cards = []
+    for slug, signal in unusual.items():
+        company_name = next((c["name"] for c in companies if c["slug"] == slug), slug)
+        examples = _matched_role_examples(roles, slug, signal)
+        unusual_cards.append({
+            "company": company_name,
+            "slug": slug,
+            "label": signal["label"],
+            "count": signal["count"],
+            "evidence": _signal_evidence(signal),
+            "description": signal["description"],
+            "examples": examples,
+        })
+
+    seniority_by_category = {item["category"]: item for item in seniority}
+    category_momentum = []
+    for category in categories[:10]:
+        seniority_item = seniority_by_category.get(category["category"], {})
+        category_momentum.append({
+            **category,
+            "senior": seniority_item.get("senior", 0),
+            "mid": seniority_item.get("mid", 0),
+            "junior": seniority_item.get("junior", 0),
+            "senior_pct": seniority_item.get("senior_pct", 0),
+            "interpretation": _category_investor_read(category["category"]),
+        })
+
+    signal_company = unusual_cards[0]["company"] if unusual_cards else "No company"
+    signal_label = unusual_cards[0]["label"] if unusual_cards else "No unusual pattern yet"
+    fastest_name = fastest_company["name"] if fastest_company else "No company"
+
+    if total_open_roles:
+        market_read = (
+            f"AI hiring is most concentrated in {top_category['category']}, with {top_category['growth']} active roles. "
+            f"{fastest_name} is the strongest company move by open role momentum, while {signal_company} shows the most unusual signal: {signal_label}. "
+            f"The investor read is that hiring has moved beyond pure research into the operating layers that turn model capability into durable advantage."
+        )
+    else:
+        market_read = "Run the scraper to generate a market read from live hiring data."
+
+    executive_cards = [
+        {
+            "label": "Biggest strategic shift",
+            "value": fastest_name,
+            "detail": _change_label(fastest_company) if fastest_company else "No comparison yet",
+        },
+        {
+            "label": "Market-wide momentum",
+            "value": top_category["category"],
+            "detail": f"{top_category['growth']} active roles across tracked companies",
+        },
+        {
+            "label": "Most unusual signal",
+            "value": signal_label,
+            "detail": f"{signal_company} has the clearest non-standard hiring pattern",
+        },
+    ]
+
+    last_updated = next((c.get("scraped_at") for c in companies if c.get("scraped_at")), None)
+
+    return {
+        "lastUpdated": last_updated,
+        "summary": {
+            "totalOpenRoles": total_open_roles,
+            "previousOpenRoles": previous_open_roles,
+            "totalChange": total_change,
+            "hasHistory": has_history,
+            "weightedChangePct": weighted_change_pct,
+            "trackedCompanies": len(companies),
+            "topLocation": top_location,
+        },
+        "marketRead": market_read,
+        "executiveCards": executive_cards,
+        "companies": companies,
+        "strategicMoves": strategic_moves,
+        "categories": categories,
+        "categoryMomentum": category_momentum,
+        "locations": locations,
+        "heatmap": heatmap,
+        "seniority": seniority,
+        "unusualSignals": unusual,
+        "unusualCards": unusual_cards,
+    }

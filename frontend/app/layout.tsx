@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Insights",
+  title: "AI Hiring Signals",
   description:
-    "Track where AI companies are hiring, what roles are growing, and what strategy it signals.",
+    "Strategy intelligence from the roles AI companies are actively hiring for.",
 };
 
 export default function RootLayout({

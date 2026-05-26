@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { RoleTable } from "@/components/RoleTable";
-import { getFilteredRoles, getRoleHref, summarizeRoles } from "@/lib/data";
+import { getRoles, type LiveRole } from "@/lib/api";
+import { getRoleHref } from "@/lib/data";
 
 type RolesPageProps = {
   searchParams: Promise<{
@@ -11,13 +12,13 @@ type RolesPageProps = {
 };
 
 export const metadata = {
-  title: "Roles - AI Insights",
-  description: "Browse open AI company roles by company, category, and location."
+  title: "Evidence - AI Hiring Signals",
+  description: "Verify the open roles behind AI company strategy signals."
 };
 
 export default async function RolesPage({ searchParams }: RolesPageProps) {
   const filters = await searchParams;
-  const filteredRoles = getFilteredRoles(filters);
+  const filteredRoles = await getRoles(filters);
   const companyBreakdown = summarizeRoles(filteredRoles, "company");
   const categoryBreakdown = summarizeRoles(filteredRoles, "category");
   const locationBreakdown = summarizeRoles(filteredRoles, "country");
@@ -36,12 +37,12 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
         <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="text-3xl font-semibold tracking-normal text-ink">
-              Open roles
+              Evidence table
             </h1>
             <p className="mt-3 max-w-2xl text-base leading-7 text-muted">
               {activeFilters.length
                 ? activeFilters.join(" · ")
-                : "All mock tracked roles across companies, categories, and locations."}
+                : "Live scraped roles behind the strategy signals, filtered for the current active hiring window."}
             </p>
           </div>
           <Link
@@ -93,9 +94,9 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
       <section className="mt-4 rounded-lg border border-line bg-white shadow-hairline">
         <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
           <div>
-            <h2 className="text-base font-semibold text-ink">All matching roles</h2>
+            <h2 className="text-base font-semibold text-ink">Roles behind the signals</h2>
             <p className="mt-1 text-xs text-muted">
-              Prototype inventory. Click any role title to open the company careers page.
+              Click any role title to verify the source listing on the company careers page.
             </p>
           </div>
           <span className="text-xs font-medium text-accent">
@@ -172,4 +173,19 @@ function Breakdown({
       </div>
     </div>
   );
+}
+
+function summarizeRoles(
+  roles: LiveRole[],
+  key: "company" | "country" | "category"
+) {
+  const counts = roles.reduce<Record<string, number>>((acc, role) => {
+    const value = role[key] || "Unknown";
+    acc[value] = (acc[value] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(counts)
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count);
 }

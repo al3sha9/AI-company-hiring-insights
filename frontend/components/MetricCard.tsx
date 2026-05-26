@@ -4,7 +4,7 @@ type MetricCardProps = {
   label: string;
   value: string;
   change: string;
-  detail: string;
+  detail?: string;
   href?: string;
 };
 
@@ -39,8 +39,7 @@ export function MetricCard({ label, value, change, detail, href }: MetricCardPro
         </span>
       </div>
 
-      {/* Detail - pushed to bottom */}
-      <p className="mt-auto text-xs leading-5 text-muted">{detail}</p>
+      {detail && <p className="mt-auto text-xs leading-5 text-muted">{detail}</p>}
     </div>
   );
 

@@ -1,5 +1,104 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export type LiveRole = {
+  id: string;
+  company: string;
+  companySlug: string;
+  title: string;
+  category: string;
+  location: string;
+  country: string;
+  seniority: string;
+  workMode: string;
+  sourceUrl: string;
+  firstSeenAt?: string | null;
+  lastSeenAt?: string | null;
+};
+
+export type Briefing = {
+  lastUpdated: string | null;
+  summary: {
+    totalOpenRoles: number;
+    previousOpenRoles: number;
+    totalChange: number;
+    hasHistory: boolean;
+    weightedChangePct: number;
+    trackedCompanies: number;
+    topLocation: {
+      country: string;
+      roles: number;
+      topCompany: string;
+    };
+  };
+  marketRead: string;
+  executiveCards: Array<{
+    label: string;
+    value: string;
+    detail: string;
+  }>;
+  companies: Array<{
+    slug: string;
+    name: string;
+    current_roles: number;
+    previous_roles: number;
+    change: number;
+    change_pct: number;
+    scraped_at: string | null;
+  }>;
+  strategicMoves: Array<{
+    company: string;
+    slug: string;
+    move: string;
+    evidence: string;
+    evidenceExamples?: string[];
+    investorRead: string;
+    confidence: string;
+    changeLabel: string;
+    openRoles: number;
+    changePct: number;
+    topCategory: string;
+  }>;
+  categories: Array<{ category: string; growth: number; count: number }>;
+  categoryMomentum: Array<{
+    category: string;
+    growth: number;
+    count: number;
+    senior: number;
+    mid: number;
+    junior: number;
+    senior_pct: number;
+    interpretation: string;
+  }>;
+  locations: Array<{
+    country: string;
+    roles: number;
+    growth: number;
+    topCompany: string;
+    topCount?: number;
+  }>;
+  heatmap: {
+    companies: string[];
+    matrix: Array<{ category: string; total: number; companies: Record<string, number> }>;
+  };
+  seniority: Array<{
+    category: string;
+    total: number;
+    senior: number;
+    mid: number;
+    junior: number;
+    senior_pct: number;
+  }>;
+  unusualCards: Array<{
+    company: string;
+    slug: string;
+    label: string;
+    count: number;
+    evidence: string;
+    description: string;
+    examples: LiveRole[];
+  }>;
+};
+
 export async function getCompanies() {
   const res = await fetch(`${API_URL}/companies`, { cache: 'no-store' });
   if (!res.ok) throw new Error("Failed to fetch companies");
@@ -101,4 +200,25 @@ export async function getUnusualSignals() {
   return res.json() as Promise<Record<string, { label: string; count: number; description: string }>>;
 }
 
+export async function getBriefing() {
+  const res = await fetch(`${API_URL}/briefing`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch executive briefing");
+  return res.json() as Promise<Briefing>;
+}
 
+export async function getRoles(filters: {
+  category?: string;
+  company?: string;
+  country?: string;
+}) {
+  const params = new URLSearchParams();
+  if (filters.company) params.set("company", filters.company);
+  if (filters.category) params.set("category", filters.category);
+  if (filters.country) params.set("country", filters.country);
+
+  const res = await fetch(`${API_URL}/roles${params.size ? `?${params}` : ""}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to fetch roles");
+  return res.json() as Promise<LiveRole[]>;
+}
