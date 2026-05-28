@@ -25,7 +25,7 @@ curl https://your-backend-project.vercel.app/briefing
 - Root directory: `frontend`
 - Framework preset: Next.js
 - Required env vars:
-  - `NEXT_PUBLIC_API_URL=https://your-backend-project.vercel.app`
+  - `NEXT_PUBLIC_API_URL=https://ai-company-hiring-insights.vercel.app`
   - `NEXT_PUBLIC_LOGO_DEV_TOKEN`
 
 After deploy, update backend `ALLOWED_ORIGINS` to the final frontend URL.

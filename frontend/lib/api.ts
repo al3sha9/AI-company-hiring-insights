@@ -1,4 +1,8 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (process.env.VERCEL
+    ? "https://ai-company-hiring-insights.vercel.app"
+    : "http://localhost:8000");
 
 export async function getCompanies() {
   const res = await fetch(`${API_URL}/companies`, { cache: 'no-store' });
@@ -100,5 +104,4 @@ export async function getUnusualSignals() {
   if (!res.ok) return {} as Record<string, { label: string; count: number; description: string }>;
   return res.json() as Promise<Record<string, { label: string; count: number; description: string }>>;
 }
-
 
