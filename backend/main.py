@@ -62,20 +62,12 @@ def fetch_all_roles(columns: str, recent_cutoff: str, company_slug: str = None) 
 
 app = FastAPI()
 
-allowed_origins = [
-    origin.strip()
-    for origin in os.getenv(
-        "ALLOWED_ORIGINS",
-        "http://localhost:3000,http://localhost:3001",
-    ).split(",")
-    if origin.strip()
-]
-allow_all_origins = "*" in allowed_origins
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if allow_all_origins else allowed_origins,
-    allow_credentials=not allow_all_origins,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
