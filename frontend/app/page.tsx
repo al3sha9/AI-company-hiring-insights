@@ -1,10 +1,8 @@
 import Link from "next/link";
-import { MetricCard } from "@/components/MetricCard";
 import { FilterBar } from "@/components/FilterBar";
 import { CategoryHeatmap } from "@/components/CategoryHeatmap";
 import { CompanyLogo } from "@/components/CompanyLogo";
 import { getBriefing } from "@/lib/api";
-import { getRoleHref } from "@/lib/data";
 
 type HomeProps = {
   searchParams: Promise<{
@@ -39,19 +37,6 @@ export default async function Home({ searchParams }: HomeProps) {
     ? briefing.strategicMoves.filter((move) => move.company === filters.company)
     : briefing.strategicMoves;
 
-  const displayedLocations = filters.country
-    ? briefing.locations.filter((location) => location.country === filters.country)
-    : briefing.locations;
-
-  const maxLocationRoles = Math.max(
-    ...displayedLocations.map((location) => location.roles),
-    1
-  );
-  const maxCategoryCount = Math.max(
-    ...briefing.categoryMomentum.map((item) => item.count),
-    1
-  );
-
   return (
     <main className="mx-auto min-h-screen max-w-8xl px-4 py-5 sm:px-6 lg:px-10 xl:px-14">
       <header className="flex flex-col gap-5 border-b border-line pb-5 lg:flex-row lg:items-end lg:justify-between">
@@ -83,24 +68,28 @@ export default async function Home({ searchParams }: HomeProps) {
       <section className="py-5">
         <div className="rounded-lg border border-line bg-white p-5 shadow-hairline">
           <div className="text-xs font-medium uppercase tracking-[0.08em] text-muted">
-            Weekly market read
+            Competitive brief
           </div>
           <p className="mt-3 max-w-5xl text-lg leading-8 text-ink">
             {briefing.marketRead}
           </p>
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            {briefing.executiveCards.map((card) => (
-              <MetricCard
-                key={card.label}
-                change={card.detail}
-                label={card.label}
-                value={card.value}
-              />
-            ))}
+          <div className="mt-4 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-stone-100 px-2.5 py-1 font-medium text-muted">
+              {briefing.summary.totalOpenRoles.toLocaleString()} active roles
+            </span>
+            <span className="rounded-full bg-stone-100 px-2.5 py-1 font-medium text-muted">
+              {briefing.summary.trackedCompanies} companies tracked
+            </span>
+            <span className="rounded-full bg-stone-100 px-2.5 py-1 font-medium text-muted">
+              Updated {lastUpdated}
+            </span>
           </div>
         </div>
       </section>
 
+      {/*
+        Hidden for now: generic metric cards added noise for CEO/investor users.
+        The brief and signal cards already cover what matters.
       <section className="grid gap-3 pb-5 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           change={
@@ -134,16 +123,17 @@ export default async function Home({ searchParams }: HomeProps) {
           value="Period change"
         />
       </section>
+      */}
 
       {briefing.unusualCards.length > 0 && (
         <section className="pb-5">
           <div className="mb-3">
             <h2 className="text-base font-semibold text-ink">
-              Non-obvious signals
+              Moves to watch
             </h2>
             <p className="mt-1 text-xs text-muted">
-              The most useful reads are role patterns that would not appear in a
-              normal software hiring dashboard.
+              Non-standard hiring patterns that may reveal competitor direction
+              before announcements.
             </p>
           </div>
           <div className="grid gap-3 lg:grid-cols-3">
@@ -191,11 +181,11 @@ export default async function Home({ searchParams }: HomeProps) {
         <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
           <div>
             <h2 className="text-base font-semibold text-ink">
-              Strategic moves
+              Competitor moves
             </h2>
             <p className="mt-1 text-xs text-muted">
-              The executive read on what hiring evidence suggests each company
-              is prioritizing.
+              What each company appears to be building toward, backed by role
+              evidence.
             </p>
           </div>
           <span className="text-xs font-medium text-accent">
@@ -281,6 +271,9 @@ export default async function Home({ searchParams }: HomeProps) {
         </section>
       )}
 
+      {/*
+        Hidden for now: category and geography tables are supporting data, not
+        first-screen competitive intelligence. Bring back when they show deltas.
       <section className="grid gap-4 py-5 lg:grid-cols-2">
         <div className="rounded-lg border border-line bg-white p-4 shadow-hairline">
           <h2 className="text-base font-semibold text-ink">
@@ -358,6 +351,7 @@ export default async function Home({ searchParams }: HomeProps) {
           </div>
         </div>
       </section>
+      */}
 
       <footer className="border-t border-line py-5 text-xs leading-5 text-subtle">
         <a className="font-medium text-ink" href="#methodology" id="methodology">
