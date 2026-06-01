@@ -20,11 +20,6 @@ function cellStyle(count: number, max: number): string {
 }
 
 export function CategoryHeatmap({ companies, matrix }: CategoryHeatmapProps) {
-  const maxCell = Math.max(
-    ...matrix.flatMap((row) => companies.map((c) => row.companies[c] || 0)),
-    1
-  );
-
   // Shorten company names for column headers
   const shortName = (name: string) =>
     name.replace(" AI", "").replace("Microsoft", "MSFT");
@@ -35,41 +30,53 @@ export function CategoryHeatmap({ companies, matrix }: CategoryHeatmapProps) {
         <thead>
           <tr className="border-b border-line text-xs uppercase tracking-[0.08em] text-muted">
             <th className="py-3 pr-6 font-medium" style={{ minWidth: 160 }}>
-              Category
+              Company
             </th>
-            {companies.map((company) => (
+            {matrix.map((row) => (
               <th
-                key={company}
+                key={row.category}
                 className="px-2 py-3 text-center font-medium"
                 style={{ minWidth: 72 }}
               >
-                {shortName(company)}
+                {row.category}
               </th>
             ))}
             <th className="pl-4 py-3 text-right font-medium">Total</th>
           </tr>
         </thead>
         <tbody>
-          {matrix.map((row) => (
-            <tr key={row.category} className="border-t border-line">
-              <td className="py-2 pr-6 font-medium text-ink">{row.category}</td>
-              {companies.map((company) => {
-                const count = row.companies[company] || 0;
-                return (
-                  <td key={company} className="px-2 py-2">
-                    <div
-                      className={`flex h-8 items-center justify-center rounded text-xs font-medium tabular-nums ${cellStyle(count, maxCell)}`}
-                    >
-                      {count > 0 ? count : "N/A"}
-                    </div>
-                  </td>
-                );
-              })}
-              <td className="pl-4 py-2 text-right tabular-nums font-medium text-ink">
-                {row.total.toLocaleString()}
-              </td>
-            </tr>
-          ))}
+          {companies.map((company) => {
+            const total = matrix.reduce(
+              (sum, row) => sum + (row.companies[company] || 0),
+              0
+            );
+            const companyMax = Math.max(
+              ...matrix.map((row) => row.companies[company] || 0),
+              1
+            );
+            return (
+              <tr key={company} className="border-t border-line">
+                <td className="py-2 pr-6 font-medium text-ink">
+                  {shortName(company)}
+                </td>
+                {matrix.map((row) => {
+                  const count = row.companies[company] || 0;
+                  return (
+                    <td key={row.category} className="px-2 py-2">
+                      <div
+                        className={`flex h-8 items-center justify-center rounded text-xs font-medium tabular-nums ${cellStyle(count, companyMax)}`}
+                      >
+                        {count > 0 ? count : "N/A"}
+                      </div>
+                    </td>
+                  );
+                })}
+                <td className="pl-4 py-2 text-right tabular-nums font-medium text-ink">
+                  {total.toLocaleString()}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

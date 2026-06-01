@@ -4,24 +4,38 @@ const API_URL =
     ? "https://ai-company-hiring-insights.vercel.app"
     : "http://localhost:8000");
 
-export async function getCompanies() {
-  const res = await fetch(`${API_URL}/companies`, { cache: 'no-store' });
+export type DashboardFilters = {
+  days?: number;
+  companySlug?: string;
+  country?: string;
+};
+
+function withFilters(path: string, filters: DashboardFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.days) params.set("days", filters.days.toString());
+  if (filters.companySlug) params.set("company_slug", filters.companySlug);
+  if (filters.country) params.set("country", filters.country);
+  return `${API_URL}${path}${params.size ? `?${params.toString()}` : ""}`;
+}
+
+export async function getCompanies(filters: DashboardFilters = {}) {
+  const res = await fetch(withFilters("/companies", filters), { cache: 'no-store' });
   if (!res.ok) throw new Error("Failed to fetch companies");
   return res.json();
 }
 
-export async function getCompany(slug: string) {
-  const res = await fetch(`${API_URL}/company/${slug}`, { cache: 'no-store' });
+export async function getCompany(slug: string, filters: DashboardFilters = {}) {
+  const res = await fetch(withFilters(`/company/${slug}`, filters), { cache: 'no-store' });
   if (!res.ok) throw new Error("Failed to fetch company details");
   return res.json();
 }
 
-export async function getCategories() {
-  const companies = await getCompanies();
+export async function getCategories(filters: DashboardFilters = {}) {
+  const companies = await getCompanies(filters);
 
   // Fetch all company details in parallel (was sequential N+1 before)
   const allDetails = await Promise.all(
-    companies.map((comp: any) => getCompany(comp.slug).catch(() => null))
+    companies.map((comp: any) => getCompany(comp.slug, filters).catch(() => null))
   );
 
   const categoryMap = new Map<string, number>();
@@ -40,13 +54,13 @@ export async function getCategories() {
   return result.sort((a, b) => b.growth - a.growth);
 }
 
-export async function getLocations() {
-  const companies = await getCompanies();
+export async function getLocations(filters: DashboardFilters = {}) {
+  const companies = await getCompanies(filters);
 
   // Fetch all company details in parallel (was sequential N+1 before)
   const allDetails = await Promise.all(
     companies.map((comp: any) =>
-      getCompany(comp.slug)
+      getCompany(comp.slug, filters)
         .then((details) => ({ details, compName: comp.name }))
         .catch(() => null)
     )
@@ -81,8 +95,8 @@ export async function getLocations() {
   return result.sort((a, b) => b.roles - a.roles);
 }
 
-export async function getCategoryMatrix() {
-  const res = await fetch(`${API_URL}/category-matrix`, { cache: 'no-store' });
+export async function getCategoryMatrix(filters: DashboardFilters = {}) {
+  const res = await fetch(withFilters("/category-matrix", filters), { cache: 'no-store' });
   if (!res.ok) throw new Error("Failed to fetch category matrix");
   return res.json() as Promise<{
     companies: string[];
@@ -90,8 +104,8 @@ export async function getCategoryMatrix() {
   }>;
 }
 
-export async function getCategorySeniority() {
-  const res = await fetch(`${API_URL}/categories/seniority`, { cache: 'no-store' });
+export async function getCategorySeniority(filters: DashboardFilters = {}) {
+  const res = await fetch(withFilters("/categories/seniority", filters), { cache: 'no-store' });
   if (!res.ok) throw new Error("Failed to fetch category seniority");
   return res.json() as Promise<Array<{
     category: string; total: number;
@@ -99,9 +113,8 @@ export async function getCategorySeniority() {
   }>>;
 }
 
-export async function getUnusualSignals() {
-  const res = await fetch(`${API_URL}/unusual-signals`, { cache: 'no-store' });
-  if (!res.ok) return {} as Record<string, { label: string; count: number; description: string }>;
-  return res.json() as Promise<Record<string, { label: string; count: number; description: string }>>;
+export async function getUnusualSignals(filters: DashboardFilters = {}) {
+  const res = await fetch(withFilters("/unusual-signals", filters), { cache: 'no-store' });
+  if (!res.ok) return {} as Record<string, { label: string; count: number; description: string; evidence: string[] }>;
+  return res.json() as Promise<Record<string, { label: string; count: number; description: string; evidence: string[] }>>;
 }
-

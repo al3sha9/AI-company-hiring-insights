@@ -9,7 +9,6 @@ import {
   getCategories,
   getLocations,
   getCategoryMatrix,
-  getCategorySeniority,
   getUnusualSignals,
 } from "@/lib/api";
 
@@ -25,24 +24,32 @@ type UnusualSignal = {
   label: string;
   count: number;
   description: string;
+  evidence: string[];
 };
 
 export default async function Home({ searchParams }: HomeProps) {
   const filters = await searchParams;
+  const days = filters.range === "30D" ? 30 : filters.range === "90D" ? 90 : 7;
+  const rangeLabel = `${days}-day`;
 
   // Two-wave fetch: critical data first, enrichment second.
   // Prevents macOS socket saturation (EAGAIN/Errno 35) from 6 simultaneous
   // Supabase connections firing at once.
-  const [apiCompanies, apiCategories, apiLocations] = await Promise.all([
-    getCompanies(),
-    getCategories(),
-    getLocations(),
+  const allCompanies = await getCompanies({ days });
+  const companySlug = allCompanies.find(
+    (company: any) => company.name === filters.company
+  )?.slug;
+  const dashboardFilters = { days, companySlug, country: filters.country };
+  const [apiCompanies, apiCategories, apiLocations, allLocations] = await Promise.all([
+    getCompanies(dashboardFilters),
+    getCategories(dashboardFilters),
+    getLocations(dashboardFilters),
+    getLocations({ days }),
   ]);
 
-  const [heatmapData, seniority, unusualSignals] = await Promise.all([
-    getCategoryMatrix().catch(() => ({ companies: [], matrix: [] })),
-    getCategorySeniority().catch(() => []),
-    getUnusualSignals().catch(() => ({} as Record<string, UnusualSignal>)),
+  const [heatmapData, unusualSignals] = await Promise.all([
+    getCategoryMatrix(dashboardFilters).catch(() => ({ companies: [], matrix: [] })),
+    getUnusualSignals(dashboardFilters).catch(() => ({} as Record<string, UnusualSignal>)),
   ]);
 
 
@@ -65,14 +72,14 @@ export default async function Home({ searchParams }: HomeProps) {
       : 0;
 
   const wowChangeLabel = !hasHistory
-    ? "Needs 2 scrapes 7+ days apart"
+    ? `Needs 2 scrapes ${days}+ days apart`
     : totalChange >= 0
     ? `+${totalChange} roles vs prior period`
     : `${totalChange} roles vs prior period`;
 
   const totalRolesChange =
     totalChange === 0 && !hasHistory
-      ? "Refresh after 7+ days for change data"
+      ? `Refresh after ${days}+ days for change data`
       : totalChange > 0
       ? `+${totalChange} since last period`
       : totalChange < 0
@@ -111,16 +118,20 @@ export default async function Home({ searchParams }: HomeProps) {
   }
 
   let rankedCompanies = [...apiCompanies]
-    .sort((a, b) => b.change_pct - a.change_pct)
     .map((c: any) => ({
       slug: c.slug,
       name: c.name,
       openRoles: c.current_roles,
       wowChange: c.change_pct,
       topGrowingCategory: topCategoryByCompany[c.name] || "Software Engineering",
-      topHiringLocation: "Remote",
+      topHiringLocation: c.top_hiring_location || "N/A",
       signal: "Active",
-    }));
+    }))
+    .sort((a, b) => {
+      const aSignal = unusualSignals[a.slug]?.count || 0;
+      const bSignal = unusualSignals[b.slug]?.count || 0;
+      return bSignal - aSignal || b.wowChange - a.wowChange;
+    });
 
   if (filters.company) {
     rankedCompanies = rankedCompanies.filter((c) => c.name === filters.company);
@@ -146,15 +157,13 @@ export default async function Home({ searchParams }: HomeProps) {
     ? apiLocations.filter((l: any) => l.country === filters.country)
     : apiLocations;
 
-  const countries = apiLocations.map((l: any) => l.country);
-
-  // --- Suggestion 3: seniority lookup per category ---
-  const seniorityMap = new Map(seniority.map((s: any) => [s.category, s]));
-  const topCatSeniority = seniorityMap.get(topCategory.category) as
-    | { senior_pct: number }
-    | undefined;
-
-
+  const countries = allLocations.map((l: any) => l.country);
+  const detailParams = new URLSearchParams();
+  if (filters.range) detailParams.set("range", filters.range);
+  if (filters.company) detailParams.set("company", filters.company);
+  if (filters.country) detailParams.set("country", filters.country);
+  const detailQuery = detailParams.size ? `?${detailParams.toString()}` : "";
+  const betsHref = `/bets${detailQuery}`;
 
   return (
     <main className="mx-auto min-h-screen max-w-8xl px-4 py-5 sm:px-6 lg:px-10 xl:px-14">
@@ -174,15 +183,14 @@ export default async function Home({ searchParams }: HomeProps) {
             </a>
           </div>
           <p className="mt-2 text-sm leading-6 text-muted">
-            Track where AI companies are hiring, what roles are growing, and
-            what strategy it signals.
+            Tracking AI companies strategies through their hiring data
           </p>
           <p className="mt-2 text-xs text-subtle">
             Data last scraped {lastUpdated}.
           </p>
         </div>
         <FilterBar
-          companies={apiCompanies.map((c: any) => ({
+          companies={allCompanies.map((c: any) => ({
             slug: c.slug,
             name: c.name,
           }))}
@@ -202,7 +210,7 @@ export default async function Home({ searchParams }: HomeProps) {
         <MetricCard
           change={wowChangeLabel}
           detail="Momentum is concentrated in infra, data center, and robotics."
-          label="Week-over-week change"
+          label={`${rangeLabel} change`}
           value={
             hasHistory
               ? `${Number(weightedWowChange) >= 0 ? "+" : ""}${weightedWowChange}%`
@@ -215,7 +223,7 @@ export default async function Home({ searchParams }: HomeProps) {
               ? `+${fastestGrowingCompany.change_pct}% this period`
               : "Monitoring"
           }
-          detail={`${fastestGrowingCompany.name} leads open role count this week.`}
+          detail={`${fastestGrowingCompany.name} leads open role count for this view.`}
           href={`/company/${fastestGrowingCompany.slug}`}
           label="Fastest growing company"
           value={fastestGrowingCompany.name}
@@ -257,11 +265,14 @@ export default async function Home({ searchParams }: HomeProps) {
                 Role concentration by category. Darker cell = more roles.
               </p>
             </div>
+            <Link className="shrink-0 text-xs font-medium text-accent hover:text-ink" href={betsHref}>
+              Show all
+            </Link>
           </div>
           <div className="p-4">
             <CategoryHeatmap
               companies={heatmapData.companies}
-              matrix={heatmapData.matrix}
+              matrix={heatmapData.matrix.slice(0, 8)}
             />
           </div>
         </section>
@@ -273,30 +284,28 @@ export default async function Home({ searchParams }: HomeProps) {
           <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
             <div>
               <h2 className="text-base font-semibold text-ink">
-                Who is hiring fastest?
+                Surprising signals by company
               </h2>
               <p className="mt-1 text-xs text-muted">
-                Ranked by 7-day open role growth.
+                Unusual hiring patterns and what they may reveal.
               </p>
             </div>
-            <span className="text-xs font-medium text-accent">
-              Strategy signal first
-            </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[1100px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-line text-xs uppercase tracking-[0.08em] text-muted">
                   <th className="px-4 py-3 font-medium">Company</th>
-                  <th className="px-4 py-3 font-medium">Open roles</th>
-                  <th className="px-4 py-3 font-medium">WoW change</th>
-                  <th className="px-4 py-3 font-medium">Top growing category</th>
-                  <th className="px-4 py-3 font-medium">Top hiring location</th>
-                  <th className="px-4 py-3 font-medium">Signal</th>
+                  <th className="px-4 py-3 font-medium">Surprising signal</th>
+                  <th className="px-4 py-3 font-medium">Evidence</th>
+                  <th className="px-4 py-3 font-medium">What it may mean</th>
+                  <th className="px-4 py-3 font-medium">Top category</th>
+                  <th className="px-4 py-3 font-medium">{rangeLabel} change</th>
+                  <th className="px-4 py-3 font-medium">Roles</th>
                 </tr>
               </thead>
               <tbody>
-                {rankedCompanies.map((company, index) => (
+                {rankedCompanies.map((company) => (
                   <tr
                     className="border-b border-line last:border-0 hover:bg-selected/60"
                     key={company.slug}
@@ -306,30 +315,34 @@ export default async function Home({ searchParams }: HomeProps) {
                         className="flex items-center gap-2.5 font-medium text-ink"
                         href={`/company/${company.slug}`}
                       >
-                        <span className="w-5 text-xs text-subtle">
-                          {index + 1}
-                        </span>
                         <CompanyLogo name={company.name} size={20} slug={company.slug} />
                         {company.name}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 tabular-nums">
-                      {company.openRoles === 0 ? (
-                        <span className="rounded-full bg-selected px-2.5 py-1 text-xs text-muted">
-                          Scraper pending
-                        </span>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const sig = unusualSignals[company.slug];
+                        return sig ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
+                            {sig.label}
+                            <span className="font-normal opacity-70">({sig.count})</span>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-subtle">
+                            No unusual pattern detected yet
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td className="max-w-xs px-4 py-3 text-xs leading-5 text-muted">
+                      {unusualSignals[company.slug]?.evidence?.length ? (
+                        unusualSignals[company.slug].evidence.join(", ")
                       ) : (
-                        <Link
-                          className="font-medium text-ink underline-offset-4 hover:underline"
-                          href={getRoleHref({ company: company.name })}
-                        >
-                          {company.openRoles}
-                        </Link>
+                        <span className="text-subtle">N/A</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-medium tabular-nums text-accent">
-                      {company.wowChange >= 0 ? "+" : ""}
-                      {company.wowChange}%
+                    <td className="max-w-sm px-4 py-3 text-xs leading-5 text-muted">
+                      {unusualSignals[company.slug]?.description || "N/A"}
                     </td>
                     <td className="px-4 py-3">
                       <Link
@@ -342,32 +355,21 @@ export default async function Home({ searchParams }: HomeProps) {
                         {company.topGrowingCategory}
                       </Link>
                     </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        className="text-muted underline-offset-4 hover:text-ink hover:underline"
-                        href={getRoleHref({
-                          company: company.name,
-                          country: company.topHiringLocation,
-                        })}
-                      >
-                        {company.topHiringLocation}
-                      </Link>
+                    <td className="px-4 py-3 font-medium tabular-nums text-accent">
+                      {company.wowChange >= 0 ? "+" : ""}
+                      {company.wowChange}%
                     </td>
-                    <td className="px-4 py-3">
-                      {(() => {
-                        const sig = unusualSignals[company.slug];
-                        return sig ? (
-                          <div>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
-                              {sig.label}
-                              <span className="font-normal opacity-70">({sig.count})</span>
-                            </span>
-                            <p className="mt-1 text-xs text-subtle">{sig.description}</p>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-subtle">N/A</span>
-                        );
-                      })()}
+                    <td className="px-4 py-3 tabular-nums">
+                      {company.openRoles === 0 ? (
+                        <span className="text-xs text-subtle">Pending</span>
+                      ) : (
+                        <Link
+                          className="text-muted underline-offset-4 hover:text-ink hover:underline"
+                          href={getRoleHref({ company: company.name })}
+                        >
+                          {company.openRoles}
+                        </Link>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -392,30 +394,12 @@ export default async function Home({ searchParams }: HomeProps) {
             <h2 className="text-base font-semibold text-ink">
               Role categories growing fastest
             </h2>
-            <div className="flex items-center gap-3 text-xs text-subtle">
-              <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2 w-2 rounded-full bg-teal-500" />
-                Senior
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2 w-2 rounded-full bg-teal-200" />
-                Mid
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2 w-2 rounded-full bg-teal-50 border border-teal-200" />
-                Junior
-              </span>
-            </div>
+            <Link className="shrink-0 text-xs font-medium text-accent hover:text-ink" href={`/categories${detailQuery}`}>
+              Show all
+            </Link>
           </div>
           <div className="mt-4 space-y-3">
-            {apiCategories.map((item: any) => {
-              const sen = seniorityMap.get(item.category) as
-                | { senior: number; mid: number; junior: number; total: number }
-                | undefined;
-              const total = sen?.total || item.growth || 1;
-              const seniorW = sen ? (sen.senior / total) * 100 : 0;
-              const midW = sen ? (sen.mid / total) * 100 : 100;
-              const juniorW = sen ? (sen.junior / total) * 100 : 0;
+            {apiCategories.slice(0, 8).map((item: any) => {
               return (
                 <Link
                   className="grid grid-cols-[minmax(0,140px)_1fr_44px] items-center gap-3 text-sm sm:grid-cols-[160px_1fr_48px]"
@@ -425,22 +409,12 @@ export default async function Home({ searchParams }: HomeProps) {
                   <div className="truncate text-muted hover:text-ink">
                     {item.category}
                   </div>
-                  {/* Suggestion 3: split bar */}
-                  <div className="flex h-2 overflow-hidden rounded-full bg-stone-100">
+                  <div className="h-2 overflow-hidden rounded-full bg-stone-100">
                     <div
                       className="h-2 bg-teal-500"
-                      style={{ width: `${seniorW}%` }}
-                    />
-                    <div
-                      className="h-2 bg-teal-200"
-                      style={{ width: `${midW}%` }}
-                    />
-                    <div
-                      className="h-2 bg-teal-50"
-                      style={{ width: `${juniorW}%` }}
+                      style={{ width: `${(item.growth / maxCategoryGrowth) * 100}%` }}
                     />
                   </div>
-                  {/* Suggestion 1: count pill */}
                   <div className="text-right font-medium tabular-nums text-ink">
                     {item.growth}
                   </div>
@@ -451,58 +425,37 @@ export default async function Home({ searchParams }: HomeProps) {
         </div>
 
         <div className="rounded-lg border border-line bg-white p-4 shadow-hairline">
-          <h2 className="text-base font-semibold text-ink">
-            Top hiring locations
-          </h2>
-          <div className="mt-4 divide-y divide-line">
-            {displayedLocations.map((location: any, index: number) => {
-              const topCompany = apiCompanies.find(
-                (company: any) => company.name === location.topCompany
-              );
-              return (
-                <div
-                  className="grid grid-cols-[22px_1fr_auto] items-center gap-3 py-2.5 text-sm"
-                  key={location.country}
-                >
-                  <div className="text-xs text-subtle">{index + 1}</div>
-                  <div>
-                    <div className="flex items-center justify-between gap-3">
-                      <Link
-                        className="font-medium text-ink underline-offset-4 hover:underline"
-                        href={getRoleHref({ country: location.country })}
-                      >
-                        {location.country}
-                      </Link>
-                      {topCompany ? (
-                        <Link
-                          className="text-xs text-muted hover:text-ink"
-                          href={`/company/${topCompany.slug}`}
-                        >
-                          {location.topCompany}
-                        </Link>
-                      ) : (
-                        <span className="text-xs text-muted">
-                          {location.topCompany}
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-2 h-1.5 rounded-full bg-stone-100">
-                      <div
-                        className="h-1.5 rounded-full bg-accent"
-                        style={{
-                          width: `${(location.roles / maxLocationRoles) * 100}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-medium tabular-nums text-ink">
-                      {location.roles}
-                    </div>
-                  </div>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-ink">
+              Top hiring locations
+            </h2>
+            <Link className="shrink-0 text-xs font-medium text-accent hover:text-ink" href={`/locations${detailQuery}`}>
+              Show all
+            </Link>
+          </div>
+          <div className="mt-4 space-y-3">
+            {displayedLocations.slice(0, 8).map((location: any) => (
+              <Link
+                className="grid grid-cols-[minmax(0,140px)_1fr_44px] items-center gap-3 text-sm sm:grid-cols-[160px_1fr_48px]"
+                href={getRoleHref({ country: location.country })}
+                key={location.country}
+              >
+                <div className="truncate text-muted hover:text-ink">
+                  {location.country}
                 </div>
-              );
-            })}
+                <div className="h-2 overflow-hidden rounded-full bg-stone-100">
+                  <div
+                    className="h-2 bg-teal-500"
+                    style={{
+                      width: `${(location.roles / maxLocationRoles) * 100}%`,
+                    }}
+                  />
+                </div>
+                <div className="text-right font-medium tabular-nums text-ink">
+                  {location.roles}
+                </div>
+              </Link>
+            ))}
           </div>
         </div>
       </section>

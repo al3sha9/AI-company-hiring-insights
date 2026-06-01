@@ -3,8 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "AI Insights",
-  description:
-    "Track where AI companies are hiring, what roles are growing, and what strategy it signals.",
+  description: "Tracking AI companies strategies through their hiring data",
 };
 
 export default function RootLayout({

@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from db import supabase
@@ -21,7 +21,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def fetch_all_roles(columns: str, recent_cutoff: str, company_slug: str = None) -> list[dict]:
+def fetch_all_roles(
+    columns: str,
+    recent_cutoff: str,
+    company_slug: str = None,
+    country: str = None,
+) -> list[dict]:
     """
     Pages through the roles table in 1000-row chunks to bypass Supabase's
     server-side max-rows cap. Retries each page up to 3 times on transient
@@ -42,6 +47,8 @@ def fetch_all_roles(columns: str, recent_cutoff: str, company_slug: str = None) 
                 )
                 if company_slug:
                     query = query.eq("company_slug", company_slug)
+                if country:
+                    query = query.eq("country", country)
                 
                 res = query.range(offset, offset + PAGE_SIZE - 1).execute()
                 last_exc = None
@@ -59,6 +66,10 @@ def fetch_all_roles(columns: str, recent_cutoff: str, company_slug: str = None) 
             break
         offset += PAGE_SIZE
     return all_rows
+
+
+def recent_cutoff(days: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
 app = FastAPI()
 
@@ -354,9 +365,15 @@ def scrape_audit(authorization: str = Header(None)):
 
 
 @app.get("/companies")
-def get_companies():
+def get_companies(
+    days: int = Query(7, ge=1, le=365),
+    company_slug: str | None = None,
+    country: str | None = None,
+):
     companies_res = supabase.table("companies").select("*").execute()
     companies = companies_res.data
+    if company_slug:
+        companies = [comp for comp in companies if comp["slug"] == company_slug]
 
     # Fetch recent snapshots only — avoid loading the entire history table.
     # Ordered desc so index 0 is always the most recent snapshot per company.
@@ -370,7 +387,18 @@ def get_companies():
     snapshots = snapshots_res.data
 
     now = datetime.now(timezone.utc)
-    target_date = now - timedelta(days=14)
+    target_date = now - timedelta(days=days)
+    active_roles = fetch_all_roles(
+        "company_slug, country",
+        recent_cutoff(days),
+        company_slug=company_slug,
+        country=country,
+    )
+    role_counts = Counter(role.get("company_slug") for role in active_roles)
+    location_counts: dict[str, Counter] = {}
+    for role in active_roles:
+        slug = role.get("company_slug") or ""
+        location_counts.setdefault(slug, Counter())[role.get("country") or "Unknown"] += 1
 
     result = []
     for comp in companies:
@@ -385,12 +413,15 @@ def get_companies():
                 "previous_roles": 0,
                 "change": 0,
                 "change_pct": 0.0,
-                "scraped_at": None
+                "scraped_at": None,
+                "top_hiring_location": "N/A",
             })
             continue
 
         latest_snap = comp_snaps[0]
         current_roles = latest_snap["total_open_roles"]
+        if country:
+            current_roles = role_counts.get(slug, 0)
         scraped_at_str = latest_snap["scraped_at"]
 
         # Exclude the latest snapshot from the comparison pool so we don't
@@ -398,7 +429,7 @@ def get_companies():
         comparison_snaps = comp_snaps[1:]
         previous_roles = current_roles  # default: no history yet
 
-        if comparison_snaps:
+        if comparison_snaps and not country:
             try:
                 closest_snap = min(
                     comparison_snaps,
@@ -425,14 +456,23 @@ def get_companies():
             "previous_roles": previous_roles,
             "change": change,
             "change_pct": change_pct,
-            "scraped_at": scraped_at_str
+            "scraped_at": scraped_at_str,
+            "top_hiring_location": (
+                location_counts.get(slug, Counter()).most_common(1)[0][0]
+                if location_counts.get(slug)
+                else "N/A"
+            ),
         })
 
     return result
 
 
 @app.get("/company/{slug}")
-def get_company(slug: str):
+def get_company(
+    slug: str,
+    days: int = Query(7, ge=1, le=365),
+    country: str | None = None,
+):
     comp_res = supabase.table("companies").select("*").eq("slug", slug).execute()
     if not comp_res.data:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -451,8 +491,7 @@ def get_company(slug: str):
     # Filter to roles seen in the most recent scrape window only.
     # The roles table is append-only and accumulates all historic rows,
     # so without this filter category/location counts are inflated.
-    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
-    roles = fetch_all_roles("*", recent_cutoff, company_slug=slug)
+    roles = fetch_all_roles("*", recent_cutoff(days), company_slug=slug, country=country)
 
     categories = Counter()
     countries = Counter()
@@ -482,10 +521,13 @@ def get_company(slug: str):
 
 
 @app.get("/categories")
-def get_categories():
+def get_categories(
+    days: int = Query(7, ge=1, le=365),
+    company_slug: str | None = None,
+    country: str | None = None,
+):
     # Only count roles seen in the most recent scrape window to match snapshot counts.
-    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
-    roles = fetch_all_roles("category", recent_cutoff)
+    roles = fetch_all_roles("category", recent_cutoff(days), company_slug, country)
 
     categories = Counter()
     for r in roles:
@@ -499,19 +541,25 @@ def get_categories():
 
 
 @app.get("/category-matrix")
-def get_category_matrix():
+def get_category_matrix(
+    days: int = Query(7, ge=1, le=365),
+    company_slug: str | None = None,
+    country: str | None = None,
+):
     """
     Returns role counts broken down by category × company.
     Used to render the heatmap on the dashboard.
     Only counts roles seen in the most recent scrape window so numbers
     match the snapshot-based company table.
     """
-    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
-    roles_data = fetch_all_roles("company_slug, category", recent_cutoff)
+    roles_data = fetch_all_roles("company_slug, category", recent_cutoff(days), company_slug, country)
     companies_res = supabase.table("companies").select("slug, name").execute()
 
     company_names = {c["slug"]: c["name"] for c in companies_res.data}
-    all_companies = [c["name"] for c in companies_res.data]
+    all_companies = [
+        c["name"] for c in companies_res.data
+        if not company_slug or c["slug"] == company_slug
+    ]
 
     matrix: dict[str, dict[str, int]] = {}
     for r in roles_data:
@@ -535,14 +583,17 @@ def get_category_matrix():
 
 
 @app.get("/categories/seniority")
-def get_category_seniority():
+def get_category_seniority(
+    days: int = Query(7, ge=1, le=365),
+    company_slug: str | None = None,
+    country: str | None = None,
+):
     """
     Returns seniority breakdown (senior / mid / junior) per category.
     Used to render split bars on the dashboard.
     Only counts roles seen in the most recent scrape window.
     """
-    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
-    roles_data = fetch_all_roles("category, seniority", recent_cutoff)
+    roles_data = fetch_all_roles("category, seniority", recent_cutoff(days), company_slug, country)
 
     SENIOR = {"Senior", "Staff", "Lead", "Principal", "Director"}
     JUNIOR = {"Junior", "Associate", "Entry", "Intern"}
@@ -577,7 +628,11 @@ def get_category_seniority():
 
 
 @app.get("/unusual-signals")
-def get_unusual_signals():
+def get_unusual_signals(
+    days: int = Query(7, ge=1, le=365),
+    company_slug: str | None = None,
+    country: str | None = None,
+):
     """
     Detects unusual role patterns per company by scanning titles for
     keywords that are atypical for a software/AI company but carry
@@ -632,8 +687,7 @@ def get_unusual_signals():
     ]
 
 
-    recent_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
-    roles_data = fetch_all_roles("company_slug, title", recent_cutoff)
+    roles_data = fetch_all_roles("company_slug, title", recent_cutoff(days), company_slug, country)
 
     company_titles: dict[str, list[str]] = {}
     for r in roles_data:
@@ -648,7 +702,12 @@ def get_unusual_signals():
             matched = [t for t in titles if any(kw in t for kw in keywords)]
             if len(matched) >= 2:
                 if best is None or len(matched) > best["count"]:
-                    best = {"label": label, "count": len(matched), "description": description}
+                    best = {
+                        "label": label,
+                        "count": len(matched),
+                        "description": description,
+                        "evidence": list(dict.fromkeys(matched))[:3],
+                    }
         if best:
             result[slug] = best
 
