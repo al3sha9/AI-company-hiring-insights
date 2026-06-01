@@ -20,15 +20,17 @@ COUNTRY_PATTERNS: list[tuple[list[str], str]] = [
       "San Francisco", "New York", "Seattle", "Austin", "Washington DC",
       "Palo Alto", "Santa Clara", "Los Angeles", "Chicago", "Boston",
       "Memphis", "Mountain View"], "US"),
-    (["United Kingdom", " UK", "London", "Cambridge", "Oxford", "Edinburgh"], "UK"),
+    (["United Kingdom", " UK", "GBR", "England", "London", "Cambridge", "Oxford", "Edinburgh"], "UK"),
     (["France", "Paris", "Lyon"], "France"),
     (["Canada", "Toronto", "Vancouver", "Ottawa", "Montreal"], "Canada"),
     (["Singapore"], "Singapore"),
     (["India", "Bangalore", "Hyderabad", "Mumbai", "Delhi", "Bengaluru"], "India"),
     (["UAE", "Dubai", "Abu Dhabi"], "UAE"),
     (["Germany", "Berlin", "Munich"], "Germany"),
-    (["Netherlands", "Amsterdam"], "Netherlands"),
+    (["Netherlands", "NLD", "The Hague", "Den Haag", "Amsterdam"], "Netherlands"),
     (["Australia", "Sydney", "Melbourne"], "Australia"),
+    (["Poland", "POL", "Gdansk", "Warsaw", "Krakow"], "Poland"),
+    (["Jordan", "JOR", "Amman"], "Jordan"),
 ]
 
 

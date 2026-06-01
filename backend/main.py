@@ -98,6 +98,7 @@ SCRAPERS: list[tuple[str, object]] = [
     ("perplexityai", perplexityai_scraper),
     ("xai", xai_scraper),
     ("coreweave", coreweave_scraper),
+    ("mistral", mistral_scraper),
     ("nvidia", nvidia_scraper),
     ("amazonagi", amazonagi_scraper),
 ]
@@ -444,6 +445,11 @@ def get_companies(
             except (ValueError, KeyError):
                 pass
 
+        # Ignore obvious scraper coverage corrections. They are not hiring
+        # growth and would create misleading executive signals.
+        if previous_roles > 0 and current_roles / previous_roles >= 4:
+            previous_roles = current_roles
+
         change = current_roles - previous_roles
         change_pct = 0.0
         if previous_roles > 0:
@@ -641,7 +647,7 @@ def get_unusual_signals(
     """
     PATTERNS: list[tuple[list[str], str, str]] = [
         # Science / RLHF trainers (xAI, Anthropic)
-        (["tutor", "biolog", "chemist", "physic", "earth sci", "geolog", "astro"],
+        (["tutor", "math", "biolog", "chemist", "physic", "earth sci", "geolog", "astro"],
          "Training AI on science", "Hiring scientists to teach the model, betting on scientific reasoning as a competitive edge"),
         # Data labeling / annotation
         (["annotator", "labeler", "data label", "rater", "content reviewer"],
@@ -702,11 +708,20 @@ def get_unusual_signals(
             matched = [t for t in titles if any(kw in t for kw in keywords)]
             if len(matched) >= 2:
                 if best is None or len(matched) > best["count"]:
+                    evidence = sorted(
+                        set(matched),
+                        key=lambda title: (
+                            -sum(keyword in title for keyword in keywords if keyword != "tutor"),
+                            -sum(keyword in title for keyword in keywords),
+                            len(title),
+                            title,
+                        ),
+                    )[:3]
                     best = {
                         "label": label,
                         "count": len(matched),
                         "description": description,
-                        "evidence": list(dict.fromkeys(matched))[:3],
+                        "evidence": evidence,
                     }
         if best:
             result[slug] = best
