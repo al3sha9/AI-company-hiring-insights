@@ -7,7 +7,12 @@ import { getCompanies, getCompany } from "@/lib/api";
 
 type CompanyPageProps = {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{
+    group?: string;
+  }>;
 };
+
+type RoleGroupKey = "category" | "location" | "seniority" | "work_mode";
 
 export async function generateStaticParams() {
   const companies = await getCompanies();
@@ -27,8 +32,9 @@ export async function generateMetadata({ params }: CompanyPageProps) {
   }
 }
 
-export default async function CompanyPage({ params }: CompanyPageProps) {
+export default async function CompanyPage({ params, searchParams }: CompanyPageProps) {
   const { slug } = await params;
+  const { group } = await searchParams;
 
   let company: any;
   try {
@@ -38,7 +44,21 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
   }
 
   const roles: any[] = company.roles || [];
+  const groupBy: RoleGroupKey | "" = ["category", "location", "seniority", "work_mode"].includes(group || "")
+    ? (group as RoleGroupKey)
+    : "";
   const trendValues: number[] = company.snapshots.map((s: any) => s.total_open_roles);
+  const latestSnapshot = company.snapshots.at(-1);
+  const dataLastFetched = latestSnapshot?.scraped_at
+    ? new Date(latestSnapshot.scraped_at).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZoneName: "short",
+      })
+    : "Not yet fetched";
   const locations = company.countries.map((c: any) => ({ label: c.country, count: c.count }));
   const categories = company.categories.map((c: any) => ({ label: c.category, count: c.count }));
 
@@ -97,6 +117,35 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
     roles.length > 0
       ? `${company.name} is concentrating ${topCategoryPct}% of open roles in ${topCategory}, with ${topLocationPct}% of positions based in ${topLocation}. ${seniorPct}% of roles are senior-level, a signal of ${signalVerb}.${remotePct > 0 ? ` ${remotePct}% of roles are offered remotely.` : ""}`
       : "Run the scraper to generate a hiring signal for this company.";
+  const groupLabels: Record<string, string> = {
+    category: "Category",
+    location: "Location",
+    seniority: "Seniority",
+    work_mode: "Work mode",
+  };
+  const seniorityOrder: Record<string, number> = {
+    Junior: 0,
+    Mid: 1,
+    Senior: 2,
+    "N/A": 3,
+  };
+  const roleGroups: Array<[string, any[]]> = groupBy
+    ? Object.entries(
+        roles.reduce<Record<string, any[]>>((acc, role) => {
+          const value =
+            groupBy === "location"
+              ? role.location || role.country || "N/A"
+              : role[groupBy] || "N/A";
+          acc[value] = acc[value] || [];
+          acc[value].push(role);
+          return acc;
+        }, {})
+      ).sort((a, b) =>
+        groupBy === "seniority"
+          ? (seniorityOrder[a[0]] ?? 4) - (seniorityOrder[b[0]] ?? 4)
+          : b[1].length - a[1].length || a[0].localeCompare(b[0])
+      )
+    : [["", roles]];
 
   return (
     <main className="mx-auto min-h-screen max-w-8xl px-4 py-5 sm:px-6 lg:px-10 xl:px-14">
@@ -117,10 +166,18 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
               </span>
             </div>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">{narrative}</p>
+            <p className="mt-2 text-xs text-subtle">
+              Data last fetched {dataLastFetched}.
+            </p>
           </div>
           <div className="rounded-lg border border-line bg-white p-4 shadow-hairline">
-            <div className="text-xs font-medium uppercase tracking-[0.08em] text-muted">
-              Open roles trend
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs font-medium uppercase tracking-[0.08em] text-muted">
+                Open roles trend
+              </div>
+              <div className="text-xs text-subtle">
+                {dataLastFetched}
+              </div>
             </div>
             <div className="mt-3 h-24">
               {trendValues.length > 0 ? (
@@ -279,50 +336,78 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
         <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-3">
           <div>
             <h2 className="text-base font-semibold text-ink">All {company.name} roles</h2>
-            <p className="mt-1 text-xs text-muted">{roles.length} roles on record</p>
+            <p className="mt-1 text-xs text-muted">
+              {groupBy
+                ? `${roles.length} roles grouped by ${groupLabels[groupBy]}`
+                : `${roles.length} roles on record`}
+            </p>
           </div>
-          <Link
-            className="shrink-0 text-xs font-medium text-accent hover:text-ink"
-            href={getRoleHref({ company: company.name })}
-          >
-            Open filtered view
-          </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-line text-xs uppercase tracking-[0.08em] text-muted">
                 <th className="px-4 py-3 font-medium">Role</th>
-                <th className="px-4 py-3 font-medium">Category</th>
-                <th className="px-4 py-3 font-medium">Location</th>
-                <th className="px-4 py-3 font-medium">Seniority</th>
-                <th className="px-4 py-3 font-medium">Work mode</th>
+                <th className="px-4 py-3 font-medium">
+                  <Link className="hover:text-ink" href={`/company/${slug}?group=category`}>
+                    Category
+                  </Link>
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  <Link className="hover:text-ink" href={`/company/${slug}?group=location`}>
+                    Location
+                  </Link>
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  <Link className="hover:text-ink" href={`/company/${slug}?group=seniority`}>
+                    Seniority
+                  </Link>
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  <Link className="hover:text-ink" href={`/company/${slug}?group=work_mode`}>
+                    Work mode
+                  </Link>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {roles.map((role: any, idx: number) => (
-                <tr
-                  className="border-b border-line last:border-0 hover:bg-selected/60"
-                  key={idx}
-                >
-                  <td className="px-4 py-3 font-medium">
-                    <a
-                      className="text-ink underline-offset-4 hover:underline"
-                      href={role.source_url}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      {role.title}
-                    </a>
-                  </td>
-                  <td className="px-4 py-3 text-muted">{role.category || "N/A"}</td>
-                  <td className="px-4 py-3 text-muted">
-                    {role.location || role.country || "N/A"}
-                  </td>
-                  <td className="px-4 py-3 text-muted">{role.seniority || "N/A"}</td>
-                  <td className="px-4 py-3 text-muted">{role.work_mode || "N/A"}</td>
-                </tr>
-              ))}
+              {roleGroups.flatMap(([groupName, groupRoles]) => [
+                ...(groupBy
+                  ? [
+                      <tr className="border-b border-line bg-selected/50" key={`group-${groupName}`}>
+                        <td className="px-4 py-2 text-xs font-semibold text-ink" colSpan={5}>
+                          {groupName}{" "}
+                          <span className="font-normal text-subtle">
+                            ({groupRoles.length})
+                          </span>
+                        </td>
+                      </tr>,
+                    ]
+                  : []),
+                ...groupRoles.map((role: any, idx: number) => (
+                  <tr
+                    className="border-b border-line last:border-0 hover:bg-selected/60"
+                    key={`${groupName}-${role.source_url || idx}`}
+                  >
+                    <td className="px-4 py-3 font-medium">
+                      <a
+                        className="text-ink underline-offset-4 hover:underline"
+                        href={role.source_url}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {role.title}
+                      </a>
+                    </td>
+                    <td className="px-4 py-3 text-muted">{role.category || "N/A"}</td>
+                    <td className="px-4 py-3 text-muted">
+                      {role.location || role.country || "N/A"}
+                    </td>
+                    <td className="px-4 py-3 text-muted">{role.seniority || "N/A"}</td>
+                    <td className="px-4 py-3 text-muted">{role.work_mode || "N/A"}</td>
+                  </tr>
+                )),
+              ])}
             </tbody>
           </table>
         </div>

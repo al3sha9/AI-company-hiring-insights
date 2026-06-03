@@ -7,14 +7,18 @@ const API_URL =
 export type DashboardFilters = {
   days?: number;
   companySlug?: string;
+  category?: string;
   country?: string;
+  limit?: number;
 };
 
 function withFilters(path: string, filters: DashboardFilters = {}) {
   const params = new URLSearchParams();
   if (filters.days) params.set("days", filters.days.toString());
   if (filters.companySlug) params.set("company_slug", filters.companySlug);
+  if (filters.category) params.set("category", filters.category);
   if (filters.country) params.set("country", filters.country);
+  if (filters.limit) params.set("limit", filters.limit.toString());
   return `${API_URL}${path}${params.size ? `?${params.toString()}` : ""}`;
 }
 
@@ -117,4 +121,22 @@ export async function getUnusualSignals(filters: DashboardFilters = {}) {
   const res = await fetch(withFilters("/unusual-signals", filters), { cache: 'no-store' });
   if (!res.ok) return {} as Record<string, { label: string; count: number; description: string; evidence: string[] }>;
   return res.json() as Promise<Record<string, { label: string; count: number; description: string; evidence: string[] }>>;
+}
+
+export async function getRoles(filters: DashboardFilters = {}) {
+  const res = await fetch(withFilters("/roles", filters), { cache: 'no-store' });
+  if (!res.ok) throw new Error("Failed to fetch roles");
+  return res.json() as Promise<Array<{
+    id: string;
+    title: string;
+    company: string;
+    companySlug: string;
+    category: string;
+    location: string;
+    country: string;
+    seniority: string;
+    workMode: string;
+    sourceUrl: string;
+    lastSeenAt: string;
+  }>>;
 }

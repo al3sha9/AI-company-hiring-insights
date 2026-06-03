@@ -126,6 +126,9 @@ export default async function Home({ searchParams }: HomeProps) {
       topGrowingCategory: topCategoryByCompany[c.name] || "Software Engineering",
       topHiringLocation: c.top_hiring_location || "N/A",
       signal: "Active",
+      unavailable: false,
+      evidence: "",
+      description: "",
     }))
     .sort((a, b) => {
       const aSignal = unusualSignals[a.slug]?.count || 0;
@@ -136,6 +139,34 @@ export default async function Home({ searchParams }: HomeProps) {
   if (filters.company) {
     rankedCompanies = rankedCompanies.filter((c) => c.name === filters.company);
   }
+
+  const unavailableCompanies = [
+    {
+      slug: "googledeepmind",
+      name: "Google DeepMind",
+      evidence: "Careers site said, not today.",
+    },
+    {
+      slug: "metaai",
+      name: "Meta AI",
+      evidence: "Meta Careers did the very Meta thing.",
+    },
+    {
+      slug: "microsoftai",
+      name: "Microsoft AI",
+      evidence: "Too broad to isolate cleanly from Microsoft-wide hiring.",
+    },
+  ].map((company) => ({
+    ...company,
+    unavailable: true,
+    openRoles: null,
+    wowChange: null,
+    topGrowingCategory: "Unavailable",
+    signal: "Data unavailable",
+    description: "We could not get a clean enough scrape yet, so no signal is inferred.",
+  }));
+  const signalCompanies =
+    filters.company || filters.country ? rankedCompanies : [...rankedCompanies, ...unavailableCompanies];
 
   const topCategory = apiCategories[0] || { category: "N/A", growth: 0 };
   const maxCategoryGrowth = Math.max(
@@ -189,13 +220,23 @@ export default async function Home({ searchParams }: HomeProps) {
             Data last scraped {lastUpdated}.
           </p>
         </div>
-        <FilterBar
-          companies={allCompanies.map((c: any) => ({
-            slug: c.slug,
-            name: c.name,
-          }))}
-          countries={countries}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterBar
+            companies={allCompanies.map((c: any) => ({
+              slug: c.slug,
+              name: c.name,
+            }))}
+            countries={countries}
+          />
+          <a
+            className="inline-flex h-9 items-center rounded-lg border border-line bg-paper px-3 text-xs font-medium text-ink hover:bg-selected"
+            href="https://www.100xbetter.ai/contact"
+            rel="noreferrer"
+            target="_blank"
+          >
+            Request a feature
+          </a>
+        </div>
       </header>
 
       {/* --- Metric cards (Suggestions 3 & 5) --- */}
@@ -305,24 +346,35 @@ export default async function Home({ searchParams }: HomeProps) {
                 </tr>
               </thead>
               <tbody>
-                {rankedCompanies.map((company) => (
+                {signalCompanies.map((company) => (
                   <tr
                     className="border-b border-line last:border-0 hover:bg-selected/60"
                     key={company.slug}
                   >
                     <td className="px-4 py-3">
-                      <Link
-                        className="flex items-center gap-2.5 font-medium text-ink"
-                        href={`/company/${company.slug}`}
-                      >
-                        <CompanyLogo name={company.name} size={20} slug={company.slug} />
-                        {company.name}
-                      </Link>
+                      {company.unavailable ? (
+                        <div className="flex items-center gap-2.5 font-medium text-ink">
+                          <CompanyLogo name={company.name} size={20} slug={company.slug} />
+                          {company.name}
+                        </div>
+                      ) : (
+                        <Link
+                          className="flex items-center gap-2.5 font-medium text-ink"
+                          href={`/company/${company.slug}`}
+                        >
+                          <CompanyLogo name={company.name} size={20} slug={company.slug} />
+                          {company.name}
+                        </Link>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {(() => {
                         const sig = unusualSignals[company.slug];
-                        return sig ? (
+                        return company.unavailable ? (
+                          <span className="inline-flex items-center rounded-full bg-stone-100 px-2.5 py-1 text-xs font-medium text-muted">
+                            Data unavailable
+                          </span>
+                        ) : sig ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
                             {sig.label}
                             <span className="font-normal opacity-70">({sig.count})</span>
@@ -335,32 +387,48 @@ export default async function Home({ searchParams }: HomeProps) {
                       })()}
                     </td>
                     <td className="max-w-xs px-4 py-3 text-xs leading-5 text-muted">
-                      {unusualSignals[company.slug]?.evidence?.length ? (
+                      {company.unavailable ? (
+                        company.evidence
+                      ) : unusualSignals[company.slug]?.evidence?.length ? (
                         unusualSignals[company.slug].evidence.join(", ")
                       ) : (
                         <span className="text-subtle">N/A</span>
                       )}
                     </td>
                     <td className="max-w-sm px-4 py-3 text-xs leading-5 text-muted">
-                      {unusualSignals[company.slug]?.description || "N/A"}
+                      {company.unavailable
+                        ? company.description
+                        : unusualSignals[company.slug]?.description || "N/A"}
                     </td>
                     <td className="px-4 py-3">
-                      <Link
-                        className="text-muted underline-offset-4 hover:text-ink hover:underline"
-                        href={getRoleHref({
-                          category: company.topGrowingCategory,
-                          company: company.name,
-                        })}
-                      >
-                        {company.topGrowingCategory}
-                      </Link>
+                      {company.unavailable ? (
+                        <span className="text-muted">Unavailable</span>
+                      ) : (
+                        <Link
+                          className="text-muted underline-offset-4 hover:text-ink hover:underline"
+                          href={getRoleHref({
+                            category: company.topGrowingCategory,
+                            company: company.name,
+                          })}
+                        >
+                          {company.topGrowingCategory}
+                        </Link>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-medium tabular-nums text-accent">
-                      {company.wowChange >= 0 ? "+" : ""}
-                      {company.wowChange}%
+                      {company.unavailable ? (
+                        <span className="text-xs font-normal text-subtle">N/A</span>
+                      ) : (
+                        <>
+                          {company.wowChange >= 0 ? "+" : ""}
+                          {company.wowChange}%
+                        </>
+                      )}
                     </td>
                     <td className="px-4 py-3 tabular-nums">
-                      {company.openRoles === 0 ? (
+                      {company.unavailable ? (
+                        <span className="text-xs text-subtle">N/A</span>
+                      ) : company.openRoles === 0 ? (
                         <span className="text-xs text-subtle">Pending</span>
                       ) : (
                         <Link

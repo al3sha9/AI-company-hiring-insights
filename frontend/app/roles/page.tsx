@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { RoleTable } from "@/components/RoleTable";
-import { getFilteredRoles, getRoleHref, summarizeRoles } from "@/lib/data";
+import { getCompanies, getRoles } from "@/lib/api";
+import { getRoleHref } from "@/lib/data";
 
 type RolesPageProps = {
   searchParams: Promise<{
@@ -17,7 +18,17 @@ export const metadata = {
 
 export default async function RolesPage({ searchParams }: RolesPageProps) {
   const filters = await searchParams;
-  const filteredRoles = getFilteredRoles(filters);
+  const companies = await getCompanies({ days: 7 });
+  const companySlug = companies.find(
+    (company: any) => company.name === filters.company
+  )?.slug;
+  const filteredRoles = await getRoles({
+    days: 7,
+    companySlug,
+    category: filters.category,
+    country: filters.country,
+    limit: 1000,
+  });
   const companyBreakdown = summarizeRoles(filteredRoles, "company");
   const categoryBreakdown = summarizeRoles(filteredRoles, "category");
   const locationBreakdown = summarizeRoles(filteredRoles, "country");
@@ -41,7 +52,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
             <p className="mt-3 max-w-2xl text-base leading-7 text-muted">
               {activeFilters.length
                 ? activeFilters.join(" · ")
-                : "All mock tracked roles across companies, categories, and locations."}
+                : "Live scraped roles across tracked AI companies."}
             </p>
           </div>
           <Link
@@ -95,7 +106,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
           <div>
             <h2 className="text-base font-semibold text-ink">All matching roles</h2>
             <p className="mt-1 text-xs text-muted">
-              Prototype inventory. Click any role title to open the company careers page.
+              Live scraped roles. Click any role title to open the source posting.
             </p>
           </div>
           <span className="text-xs font-medium text-accent">
@@ -106,6 +117,20 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
       </section>
     </main>
   );
+}
+
+function summarizeRoles(
+  roles: Array<{ company: string; category: string; country: string }>,
+  key: "company" | "country" | "category"
+) {
+  const counts = roles.reduce<Record<string, number>>((acc, role) => {
+    acc[role[key]] = (acc[role[key]] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(counts)
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count);
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -157,7 +182,7 @@ function Breakdown({
                   {item.label}
                 </span>
                 <span className="font-medium tabular-nums text-ink">
-                  {item.count}
+                  {item.count} roles
                 </span>
               </div>
               <div className="mt-2 h-1.5 rounded-full bg-stone-100">

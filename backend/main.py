@@ -526,6 +526,42 @@ def get_company(
     }
 
 
+@app.get("/roles")
+def get_roles(
+    days: int = Query(7, ge=1, le=365),
+    company_slug: str | None = None,
+    category: str | None = None,
+    country: str | None = None,
+    limit: int = Query(500, ge=1, le=2000),
+):
+    roles = fetch_all_roles("*", recent_cutoff(days), company_slug=company_slug, country=country)
+    if category:
+        roles = [role for role in roles if (role.get("category") or "Uncategorized") == category]
+
+    companies_res = supabase.table("companies").select("slug, name").execute()
+    company_names = {company["slug"]: company["name"] for company in companies_res.data}
+
+    sorted_roles = sorted(roles, key=lambda role: role.get("last_seen_at") or "", reverse=True)
+    result = []
+    for role in sorted_roles[:limit]:
+        slug = role.get("company_slug") or ""
+        result.append({
+            "id": role.get("id") or role.get("source_url"),
+            "title": role.get("title") or "Untitled role",
+            "company": company_names.get(slug, slug),
+            "companySlug": slug,
+            "category": role.get("category") or "Uncategorized",
+            "location": role.get("location") or "",
+            "country": role.get("country") or "Unknown",
+            "seniority": role.get("seniority") or "N/A",
+            "workMode": role.get("work_mode") or "N/A",
+            "sourceUrl": role.get("source_url") or "",
+            "lastSeenAt": role.get("last_seen_at") or "",
+        })
+
+    return result
+
+
 @app.get("/categories")
 def get_categories(
     days: int = Query(7, ge=1, le=365),
@@ -663,6 +699,10 @@ def get_unusual_signals(
         (["policy", "government affairs", "regulatory affairs",
           "public affairs", "legislation", "government relation"],
          "Going after government contracts", "Government AI contracts are among the largest deals available, and this is the sales team for that"),
+        # Forward-deployed AI / sovereign enterprise rollouts (Mistral)
+        (["deployment strategist", "forward deployed", "sovereign institution",
+          "critical and sovereign", "ai4engineering", "applied ai"],
+         "Turning models into deployed enterprise AI", "Hiring deployment strategists and forward-deployed AI engineers points to hands-on enterprise and sovereign-institution rollouts"),
         # Legal / compliance
         (["lawyer", "attorney", "legal counsel", "general counsel",
           "compliance", "legal advisor"],

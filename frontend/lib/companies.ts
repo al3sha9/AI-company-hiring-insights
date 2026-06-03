@@ -8,6 +8,9 @@ export const COMPANY_DOMAINS: Record<string, string> = {
   mistral: "mistral.ai",
   nvidia: "nvidia.com",
   amazonagi: "amazon.science",
+  googledeepmind: "deepmind.google",
+  metaai: "meta.com",
+  microsoftai: "microsoft.com",
 };
 
 export function getLogoUrl(slug: string): string | null {
