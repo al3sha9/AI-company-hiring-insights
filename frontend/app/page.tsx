@@ -230,8 +230,8 @@ export default async function Home({ searchParams }: HomeProps) {
           />
           <a
             className="inline-flex h-9 items-center rounded-lg border border-line bg-paper px-3 text-xs font-medium text-ink hover:bg-selected"
-            href="https://www.100xbetter.ai/contact"
-            rel="noreferrer"
+            href="https://100xbetter.ai/contact?inquiry=request-feature-ai-signals-tool"
+            rel="noopener noreferrer"
             target="_blank"
           >
             Request a feature

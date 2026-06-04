@@ -9,6 +9,8 @@
     "typecheck": "NEXT_TEST_WASM_DIR=node_modules/@next/swc-wasm-nodejs next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@headlessui/react": "^2.2.10",
+    "clsx": "^2.1.1",
     "next": "16.2.5",
     "nucleo-ui-essential-outline-18": "^1.1.7",
     "react": "19.2.6",
