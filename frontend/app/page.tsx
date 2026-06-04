@@ -533,9 +533,13 @@ export default async function Home({ searchParams }: HomeProps) {
         <a className="font-medium text-ink" href="#methodology" id="methodology">
           Methodology
         </a>
-        : This prototype uses live data scraped from official company career
-        pages. Categories and strategy signals are inferred and should be
-        treated as directional, not official company statements.
+        : This prototype uses public hiring data from official company career
+        pages and the recruiting platforms that host those pages, including
+        Greenhouse, Lever, Ashby, Workday, and Amazon Jobs where available. Role
+        links credit the original source. We do not collect applicant data or
+        personal profiles. Categories and strategy signals are inferred from
+        public role metadata and should be treated as directional, not official
+        company statements.
       </footer>
     </main>
   );

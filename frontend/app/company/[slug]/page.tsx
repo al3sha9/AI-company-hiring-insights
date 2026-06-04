@@ -2,17 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Sparkline } from "@/components/Sparkline";
 import { CompanyLogo } from "@/components/CompanyLogo";
+import { PaginatedRoleTable } from "@/components/PaginatedRoleTable";
 import { getRoleHref } from "@/lib/data";
-import { getCompanies, getCompany } from "@/lib/api";
+import { getCompanies, getCompany, getRoles } from "@/lib/api";
 
 type CompanyPageProps = {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{
-    group?: string;
-  }>;
 };
-
-type RoleGroupKey = "category" | "location" | "seniority" | "work_mode";
 
 export async function generateStaticParams() {
   const companies = await getCompanies();
@@ -32,21 +28,21 @@ export async function generateMetadata({ params }: CompanyPageProps) {
   }
 }
 
-export default async function CompanyPage({ params, searchParams }: CompanyPageProps) {
+export default async function CompanyPage({ params }: CompanyPageProps) {
   const { slug } = await params;
-  const { group } = await searchParams;
 
   let company: any;
+  let rolesPage: any;
   try {
-    company = await getCompany(slug);
+    [company, rolesPage] = await Promise.all([
+      getCompany(slug),
+      getRoles({ days: 7, companySlug: slug, limit: 50, offset: 0 }),
+    ]);
   } catch {
     notFound();
   }
 
   const roles: any[] = company.roles || [];
-  const groupBy: RoleGroupKey | "" = ["category", "location", "seniority", "work_mode"].includes(group || "")
-    ? (group as RoleGroupKey)
-    : "";
   const trendValues: number[] = company.snapshots.map((s: any) => s.total_open_roles);
   const latestSnapshot = company.snapshots.at(-1);
   const dataLastFetched = latestSnapshot?.scraped_at
@@ -117,36 +113,6 @@ export default async function CompanyPage({ params, searchParams }: CompanyPageP
     roles.length > 0
       ? `${company.name} is concentrating ${topCategoryPct}% of open roles in ${topCategory}, with ${topLocationPct}% of positions based in ${topLocation}. ${seniorPct}% of roles are senior-level, a signal of ${signalVerb}.${remotePct > 0 ? ` ${remotePct}% of roles are offered remotely.` : ""}`
       : "Run the scraper to generate a hiring signal for this company.";
-  const groupLabels: Record<string, string> = {
-    category: "Category",
-    location: "Location",
-    seniority: "Seniority",
-    work_mode: "Work mode",
-  };
-  const seniorityOrder: Record<string, number> = {
-    Junior: 0,
-    Mid: 1,
-    Senior: 2,
-    "N/A": 3,
-  };
-  const roleGroups: Array<[string, any[]]> = groupBy
-    ? Object.entries(
-        roles.reduce<Record<string, any[]>>((acc, role) => {
-          const value =
-            groupBy === "location"
-              ? role.location || role.country || "N/A"
-              : role[groupBy] || "N/A";
-          acc[value] = acc[value] || [];
-          acc[value].push(role);
-          return acc;
-        }, {})
-      ).sort((a, b) =>
-        groupBy === "seniority"
-          ? (seniorityOrder[a[0]] ?? 4) - (seniorityOrder[b[0]] ?? 4)
-          : b[1].length - a[1].length || a[0].localeCompare(b[0])
-      )
-    : [["", roles]];
-
   return (
     <main className="mx-auto min-h-screen max-w-8xl px-4 py-5 sm:px-6 lg:px-10 xl:px-14">
       {/* Header */}
@@ -199,7 +165,7 @@ export default async function CompanyPage({ params, searchParams }: CompanyPageP
           label="WoW change"
           value={trendValues.length > 1 ? `${wowChange >= 0 ? "+" : ""}${wowChange}%` : "N/A"}
         />
-        <Stat label="Roles on record" value={roles.length.toLocaleString()} />
+        <Stat label="Roles on record" value={rolesPage.total.toLocaleString()} />
         <div className="rounded-lg border border-line bg-white p-4 shadow-hairline">
           <div className="text-xs font-medium uppercase tracking-[0.08em] text-muted">
             Work mode
@@ -337,80 +303,16 @@ export default async function CompanyPage({ params, searchParams }: CompanyPageP
           <div>
             <h2 className="text-base font-semibold text-ink">All {company.name} roles</h2>
             <p className="mt-1 text-xs text-muted">
-              {groupBy
-                ? `${roles.length} roles grouped by ${groupLabels[groupBy]}`
-                : `${roles.length} roles on record`}
+              50 roles per page. Use filters from dashboard for category or location views.
             </p>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-            <thead>
-              <tr className="border-b border-line text-xs uppercase tracking-[0.08em] text-muted">
-                <th className="px-4 py-3 font-medium">Role</th>
-                <th className="px-4 py-3 font-medium">
-                  <Link className="hover:text-ink" href={`/company/${slug}?group=category`}>
-                    Category
-                  </Link>
-                </th>
-                <th className="px-4 py-3 font-medium">
-                  <Link className="hover:text-ink" href={`/company/${slug}?group=location`}>
-                    Location
-                  </Link>
-                </th>
-                <th className="px-4 py-3 font-medium">
-                  <Link className="hover:text-ink" href={`/company/${slug}?group=seniority`}>
-                    Seniority
-                  </Link>
-                </th>
-                <th className="px-4 py-3 font-medium">
-                  <Link className="hover:text-ink" href={`/company/${slug}?group=work_mode`}>
-                    Work mode
-                  </Link>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {roleGroups.flatMap(([groupName, groupRoles]) => [
-                ...(groupBy
-                  ? [
-                      <tr className="border-b border-line bg-selected/50" key={`group-${groupName}`}>
-                        <td className="px-4 py-2 text-xs font-semibold text-ink" colSpan={5}>
-                          {groupName}{" "}
-                          <span className="font-normal text-subtle">
-                            ({groupRoles.length})
-                          </span>
-                        </td>
-                      </tr>,
-                    ]
-                  : []),
-                ...groupRoles.map((role: any, idx: number) => (
-                  <tr
-                    className="border-b border-line last:border-0 hover:bg-selected/60"
-                    key={`${groupName}-${role.source_url || idx}`}
-                  >
-                    <td className="px-4 py-3 font-medium">
-                      <a
-                        className="text-ink underline-offset-4 hover:underline"
-                        href={role.source_url}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {role.title}
-                      </a>
-                    </td>
-                    <td className="px-4 py-3 text-muted">{role.category || "N/A"}</td>
-                    <td className="px-4 py-3 text-muted">
-                      {role.location || role.country || "N/A"}
-                    </td>
-                    <td className="px-4 py-3 text-muted">{role.seniority || "N/A"}</td>
-                    <td className="px-4 py-3 text-muted">{role.work_mode || "N/A"}</td>
-                  </tr>
-                )),
-              ])}
-            </tbody>
-          </table>
-        </div>
+        <PaginatedRoleTable
+          filters={{ days: 7, companySlug: slug }}
+          initialPage={rolesPage}
+          showCompany={false}
+          showWorkMode
+        />
       </section>
     </main>
   );

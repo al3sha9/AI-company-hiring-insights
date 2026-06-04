@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { RoleTable } from "@/components/RoleTable";
+import { PaginatedRoleTable } from "@/components/PaginatedRoleTable";
 import { getCompanies, getRoles } from "@/lib/api";
 import { getRoleHref } from "@/lib/data";
 
@@ -22,16 +22,17 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
   const companySlug = companies.find(
     (company: any) => company.name === filters.company
   )?.slug;
-  const filteredRoles = await getRoles({
+  const rolesPage = await getRoles({
     days: 7,
     companySlug,
     category: filters.category,
     country: filters.country,
-    limit: 1000,
+    limit: 50,
+    offset: 0,
   });
-  const companyBreakdown = summarizeRoles(filteredRoles, "company");
-  const categoryBreakdown = summarizeRoles(filteredRoles, "category");
-  const locationBreakdown = summarizeRoles(filteredRoles, "country");
+  const companyBreakdown = rolesPage.facets.company;
+  const categoryBreakdown = rolesPage.facets.category;
+  const locationBreakdown = rolesPage.facets.country;
   const activeFilters = [
     filters.company && `Company: ${filters.company}`,
     filters.category && `Category: ${filters.category}`,
@@ -65,18 +66,18 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
       </header>
 
       <section className="grid grid-cols-2 gap-3 py-5 sm:grid-cols-4">
-        <Stat label="Matching roles" value={filteredRoles.length.toLocaleString()} />
+        <Stat label="Matching roles" value={rolesPage.total.toLocaleString()} />
         <Stat
           label="Companies"
-          value={new Set(filteredRoles.map((role) => role.company)).size.toString()}
+          value={companyBreakdown.length.toString()}
         />
         <Stat
           label="Categories"
-          value={new Set(filteredRoles.map((role) => role.category)).size.toString()}
+          value={categoryBreakdown.length.toString()}
         />
         <Stat
           label="Countries"
-          value={new Set(filteredRoles.map((role) => role.country)).size.toString()}
+          value={locationBreakdown.length.toString()}
         />
       </section>
 
@@ -110,27 +111,21 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
             </p>
           </div>
           <span className="text-xs font-medium text-accent">
-            {filteredRoles.length.toLocaleString()} roles
+            Showing {rolesPage.roles.length.toLocaleString()} of {rolesPage.total.toLocaleString()} roles
           </span>
         </div>
-        <RoleTable roles={filteredRoles} />
+        <PaginatedRoleTable
+          filters={{
+            days: 7,
+            companySlug,
+            category: filters.category,
+            country: filters.country,
+          }}
+          initialPage={rolesPage}
+        />
       </section>
     </main>
   );
-}
-
-function summarizeRoles(
-  roles: Array<{ company: string; category: string; country: string }>,
-  key: "company" | "country" | "category"
-) {
-  const counts = roles.reduce<Record<string, number>>((acc, role) => {
-    acc[role[key]] = (acc[role[key]] ?? 0) + 1;
-    return acc;
-  }, {});
-
-  return Object.entries(counts)
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count);
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

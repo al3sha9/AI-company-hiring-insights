@@ -532,18 +532,43 @@ def get_roles(
     company_slug: str | None = None,
     category: str | None = None,
     country: str | None = None,
-    limit: int = Query(500, ge=1, le=2000),
+    limit: int = Query(50, ge=1, le=50),
+    offset: int = Query(0, ge=0),
 ):
-    roles = fetch_all_roles("*", recent_cutoff(days), company_slug=company_slug, country=country)
+    cutoff = recent_cutoff(days)
+    roles = fetch_all_roles("company_slug, category, country", cutoff, company_slug=company_slug, country=country)
     if category:
         roles = [role for role in roles if (role.get("category") or "Uncategorized") == category]
 
     companies_res = supabase.table("companies").select("slug, name").execute()
     company_names = {company["slug"]: company["name"] for company in companies_res.data}
 
-    sorted_roles = sorted(roles, key=lambda role: role.get("last_seen_at") or "", reverse=True)
+    page_query = (
+        supabase.table("roles")
+        .select("*")
+        .gte("last_seen_at", cutoff)
+        .order("last_seen_at", desc=True)
+        .range(offset, offset + limit - 1)
+    )
+    if company_slug:
+        page_query = page_query.eq("company_slug", company_slug)
+    if country:
+        page_query = page_query.eq("country", country)
+    if category:
+        page_query = page_query.eq("category", category)
+
+    page_roles = page_query.execute().data
+    total = len(roles)
+
+    def summarize(key: str):
+        counts = Counter(role.get(key) or "Unknown" for role in roles)
+        return [
+            {"label": label, "count": count}
+            for label, count in counts.most_common()
+        ]
+
     result = []
-    for role in sorted_roles[:limit]:
+    for role in page_roles:
         slug = role.get("company_slug") or ""
         result.append({
             "id": role.get("id") or role.get("source_url"),
@@ -559,7 +584,23 @@ def get_roles(
             "lastSeenAt": role.get("last_seen_at") or "",
         })
 
-    return result
+    next_offset = offset + len(result)
+    return {
+        "roles": result,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "hasMore": next_offset < total,
+        "nextOffset": next_offset if next_offset < total else None,
+        "facets": {
+            "company": [
+                {"label": company_names.get(label, label), "slug": label, "count": count}
+                for label, count in Counter(role.get("company_slug") or "Unknown" for role in roles).most_common()
+            ],
+            "category": summarize("category"),
+            "country": summarize("country"),
+        },
+    }
 
 
 @app.get("/categories")
@@ -681,6 +722,7 @@ def get_unusual_signals(
     strong strategic signal (e.g. tutors = RLHF trainers).
     Returns the top detected signal per company slug.
     """
+    # Before adding or changing signal copy, follow SIGNAL_WRITING_PROMPT.md.
     PATTERNS: list[tuple[list[str], str, str]] = [
         # Science / RLHF trainers (xAI, Anthropic)
         (["tutor", "math", "biolog", "chemist", "physic", "earth sci", "geolog", "astro"],
@@ -702,15 +744,16 @@ def get_unusual_signals(
         # Forward-deployed AI / sovereign enterprise rollouts (Mistral)
         (["deployment strategist", "forward deployed", "sovereign institution",
           "critical and sovereign", "ai4engineering", "applied ai"],
-         "Turning models into deployed enterprise AI", "Hiring deployment strategists and forward-deployed AI engineers points to hands-on enterprise and sovereign-institution rollouts"),
+         "Building an AI deployment consultancy", "Mistral is hiring deployment strategists and forward-deployed AI engineers, signaling a services layer around its models that competes with Accenture and PwC for enterprise AI implementation"),
         # Legal / compliance
         (["lawyer", "attorney", "legal counsel", "general counsel",
           "compliance", "legal advisor"],
          "Legal expansion", "Scaling legal capacity, a prerequisite for large enterprise deals and regulated markets"),
-        # Infrastructure / data center ops (OpenAI Stargate, CoreWeave)
-        (["data center", "facilities", "site reliability", "power",
+        # Infrastructure / data center ops (Nvidia, OpenAI Stargate, CoreWeave)
+        (["data center", "datacenter", "ai infrastructure", "dgx cloud",
+          "cluster", "facilities", "site reliability", "power",
           "mechanical engineer", "electrical engineer", "hvac"],
-         "Building their own data centers", "Owning physical hardware instead of renting it cuts long-term costs and reduces dependency on cloud providers"),
+         "Competing in AI infrastructure", "Data center, power, and AI infrastructure roles signal a move beyond chips into full-stack AI compute, competing with hyperscalers like Amazon and Google"),
         # Creative domain experts (OpenAI Sora, image gen models)
         (["filmmaker", "cinematograph", "video producer", "creative director",
           "concept artist", "animator", "storyboard", "photographer"],

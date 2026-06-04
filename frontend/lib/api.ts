@@ -10,6 +10,7 @@ export type DashboardFilters = {
   category?: string;
   country?: string;
   limit?: number;
+  offset?: number;
 };
 
 function withFilters(path: string, filters: DashboardFilters = {}) {
@@ -19,6 +20,7 @@ function withFilters(path: string, filters: DashboardFilters = {}) {
   if (filters.category) params.set("category", filters.category);
   if (filters.country) params.set("country", filters.country);
   if (filters.limit) params.set("limit", filters.limit.toString());
+  if (filters.offset) params.set("offset", filters.offset.toString());
   return `${API_URL}${path}${params.size ? `?${params.toString()}` : ""}`;
 }
 
@@ -126,7 +128,11 @@ export async function getUnusualSignals(filters: DashboardFilters = {}) {
 export async function getRoles(filters: DashboardFilters = {}) {
   const res = await fetch(withFilters("/roles", filters), { cache: 'no-store' });
   if (!res.ok) throw new Error("Failed to fetch roles");
-  return res.json() as Promise<Array<{
+  return res.json() as Promise<RolesResponse>;
+}
+
+export type RolesResponse = {
+  roles: Array<{
     id: string;
     title: string;
     company: string;
@@ -138,5 +144,15 @@ export async function getRoles(filters: DashboardFilters = {}) {
     workMode: string;
     sourceUrl: string;
     lastSeenAt: string;
-  }>>;
-}
+  }>;
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+  facets: {
+    company: Array<{ label: string; slug: string; count: number }>;
+    category: Array<{ label: string; count: number }>;
+    country: Array<{ label: string; count: number }>;
+  };
+};
