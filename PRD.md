@@ -322,5 +322,7 @@ The system scans role titles for keywords that are atypical for a software compa
 | `SUPABASE_KEY` | Yes | Supabase service role key |
 | `SCRAPE_SECRET` | Yes | Bearer token to authorise scrape triggers |
 | `ALLOWED_ORIGINS` | Yes | Comma-separated CORS origins |
+| `UPSTASH_REDIS_REST_URL` | No | Optional Upstash Redis REST URL for persistent response cache |
+| `UPSTASH_REDIS_REST_TOKEN` | No | Optional Upstash Redis REST token for persistent response cache |
 | `NEXT_PUBLIC_API_URL` | Yes | Backend API URL for frontend fetches |
 | `NEXT_PUBLIC_LOGO_DEV_TOKEN` | No | logo.dev API token for company logos |

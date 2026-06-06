@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import json
 from datetime import datetime, timezone, timedelta
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -8,6 +9,7 @@ from typing import Callable, TypeVar
 
 from fastapi import FastAPI, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
+import httpx
 
 from db import supabase
 import scraper.anthropic as anthropic_scraper
@@ -24,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 _RESPONSE_CACHE: dict[str, tuple[float, object]] = {}
+UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL", "").rstrip("/")
+UPSTASH_REDIS_REST_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
+CACHE_PREFIX = os.getenv("CACHE_PREFIX", "ai-insights-cache")
+REDIS_TIMEOUT_SECONDS = 2.0
 
 
 def _cache_key(name: str, **params) -> str:
@@ -33,18 +39,47 @@ def _cache_key(name: str, **params) -> str:
     return "|".join(parts)
 
 
-def cached_response(key: str, ttl_seconds: int, factory: Callable[[], T]) -> T:
-    now = time.time()
-    cached = _RESPONSE_CACHE.get(key)
-    if cached and cached[0] > now:
-        return cached[1]  # type: ignore[return-value]
+def _redis_enabled() -> bool:
+    return bool(UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN)
 
-    value = factory()
-    _RESPONSE_CACHE[key] = (now + ttl_seconds, value)
-    return value
+
+def _redis_key(key: str) -> str:
+    return f"{CACHE_PREFIX}:{key}"
+
+
+def _redis_command(command: list[object]):
+    if not _redis_enabled():
+        return None
+    try:
+        response = httpx.post(
+            UPSTASH_REDIS_REST_URL,
+            headers={"Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}"},
+            json=command,
+            timeout=REDIS_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        return response.json().get("result")
+    except Exception as exc:
+        logger.warning("Redis cache command failed: %s", exc)
+        return None
+
+
+def cached_response(key: str, ttl_seconds: int, factory: Callable[[], T]) -> T:
+    cached = get_cached_response(key)
+    if cached is not None:
+        return cached  # type: ignore[return-value]
+
+    return set_cached_response(key, ttl_seconds, factory())
 
 
 def get_cached_response(key: str):
+    redis_payload = _redis_command(["GET", _redis_key(key)])
+    if redis_payload:
+        try:
+            return json.loads(redis_payload)
+        except json.JSONDecodeError:
+            pass
+
     cached = _RESPONSE_CACHE.get(key)
     if cached and cached[0] > time.time():
         return cached[1]
@@ -53,11 +88,15 @@ def get_cached_response(key: str):
 
 def set_cached_response(key: str, ttl_seconds: int, value: T) -> T:
     _RESPONSE_CACHE[key] = (time.time() + ttl_seconds, value)
+    _redis_command(["SET", _redis_key(key), json.dumps(value), "EX", ttl_seconds])
     return value
 
 
 def clear_response_cache() -> None:
     _RESPONSE_CACHE.clear()
+    redis_keys = _redis_command(["KEYS", f"{CACHE_PREFIX}:*"])
+    if redis_keys:
+        _redis_command(["DEL", *redis_keys])
 
 
 def fetch_all_roles(
@@ -150,7 +189,11 @@ def health_check():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "cache_entries": len(_RESPONSE_CACHE)}
+    return {
+        "status": "ok",
+        "cache_entries": len(_RESPONSE_CACHE),
+        "redis_cache": "enabled" if _redis_enabled() else "disabled",
+    }
 
 
 def _scrape_one(company_slug: str, scraper_module, scraped_at: str) -> dict:

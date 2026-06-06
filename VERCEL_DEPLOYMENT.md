@@ -12,6 +12,8 @@ Deploy as two Vercel projects.
   - `SUPABASE_KEY`
   - `SCRAPE_SECRET`
   - `ALLOWED_ORIGINS=https://your-frontend-project.vercel.app`
+  - `UPSTASH_REDIS_REST_URL` (optional, free Upstash Redis cache)
+  - `UPSTASH_REDIS_REST_TOKEN` (optional, free Upstash Redis cache)
 
 After deploy, test:
 
