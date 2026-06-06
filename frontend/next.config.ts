@@ -16,7 +16,8 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Content-Security-Policy",
-            value: "frame-ancestors https://100xbetter.ai http://localhost:3000",
+            value:
+              "frame-ancestors https://100xbetter.ai https://www.100xbetter.ai http://localhost:3000",
           },
         ],
       },
