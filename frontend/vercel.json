@@ -1,11 +1,5 @@
 {
   "buildCommand": "pnpm build",
   "devCommand": "pnpm dev",
-  "installCommand": "pnpm install",
-  "crons": [
-    {
-      "path": "/api/warm-backend",
-      "schedule": "*/10 * * * *"
-    }
-  ]
+  "installCommand": "pnpm install"
 }
