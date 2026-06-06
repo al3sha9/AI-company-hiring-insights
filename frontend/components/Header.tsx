@@ -98,9 +98,27 @@ function MobileNavigation() {
         >
           Stock Valuation Tool
         </MobileNavLink>
-        <MobileNavLink href="/ai-training">AI training</MobileNavLink>
-        <MobileNavLink href="/about">About</MobileNavLink>
-        <MobileNavLink href="/contact">contact</MobileNavLink>
+        <MobileNavLink
+          href="https://100xbetter.ai/ai-training"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          AI training
+        </MobileNavLink>
+        <MobileNavLink
+          href="https://100xbetter.ai/about"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          About
+        </MobileNavLink>
+        <MobileNavLink
+          href="https://100xbetter.ai/contact"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          contact
+        </MobileNavLink>
         <MobileNavLink
           href="https://course.100xbetter.ai/login"
           target="_blank"
@@ -157,9 +175,27 @@ export function Header() {
               >
                 Stock Valuation Tool
               </NavLink>
-              <NavLink href="/ai-training">AI training</NavLink>
-              <NavLink href="/about">About</NavLink>
-              <NavLink href="/contact">contact</NavLink>
+              <NavLink
+                href="https://100xbetter.ai/ai-training"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                AI training
+              </NavLink>
+              <NavLink
+                href="https://100xbetter.ai/about"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                About
+              </NavLink>
+              <NavLink
+                href="https://100xbetter.ai/contact"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                contact
+              </NavLink>
               <NavLink
                 href="https://course.100xbetter.ai/login"
                 target="_blank"
