@@ -1,12 +1,5 @@
 import type { Metadata } from "next";
-import {
-  getCategories,
-  getCategoryMatrix,
-  getCompanies,
-  getLocations,
-  getRoles,
-  getUnusualSignals,
-} from "@/lib/api";
+import { getCategoryMatrix } from "@/lib/api";
 
 export const metadata: Metadata = {
   title: "AI Insights Embed",
@@ -19,50 +12,14 @@ export const metadata: Metadata = {
 
 const FULL_APP_URL = "https://ai-insights.100xbetter.ai";
 
-type Signal = {
-  label: string;
-  count: number;
-  description: string;
-  evidence: string[];
-};
-
 export default async function EmbedPage() {
   const days = 7;
-  const [companies, categories, locations, heatmapData, unusualSignals, rolesPage] =
-    await Promise.all([
-      getCompanies({ days }).catch(() => []),
-      getCategories({ days }).catch(() => []),
-      getLocations({ days }).catch(() => []),
-      getCategoryMatrix({ days }).catch(() => ({ companies: [], matrix: [] })),
-      getUnusualSignals({ days }).catch(() => ({} as Record<string, Signal>)),
-      getRoles({ days, limit: 6, offset: 0 }).catch(() => ({
-        roles: [],
-        total: 0,
-        limit: 6,
-        offset: 0,
-        hasMore: false,
-        nextOffset: null,
-        facets: { company: [], category: [], country: [] },
-      })),
-    ]);
-
-  const topCompanies = [...companies]
-    .sort((a: any, b: any) => b.current_roles - a.current_roles)
-    .slice(0, 5);
-  const topCategories = categories.slice(0, 5);
-  const topLocations = locations.slice(0, 5);
+  const heatmapData = await getCategoryMatrix({ days }).catch(() => ({
+    companies: [],
+    matrix: [],
+  }));
   const heatmapCompanies = heatmapData.companies.slice(0, 7);
   const heatmapRows = heatmapData.matrix.slice(0, 6);
-  const maxCategory = Math.max(...topCategories.map((item: any) => item.growth), 1);
-  const maxLocation = Math.max(...topLocations.map((item: any) => item.roles), 1);
-
-  const signals = topCompanies
-    .map((company: any) => ({
-      company,
-      signal: unusualSignals[company.slug],
-    }))
-    .filter((item: any) => item.signal)
-    .slice(0, 3);
 
   return (
     <main className="min-h-screen bg-[#f5f5f5] p-4 text-ink">
@@ -136,135 +93,8 @@ export default async function EmbedPage() {
           </div>
         </section>
 
-        <section className="grid gap-3 lg:grid-cols-[1fr_0.9fr_1.1fr]">
-          <Panel title="Company signal detection">
-            <div className="grid gap-2">
-              {signals.length ? (
-                signals.map(({ company, signal }: any) => (
-                  <div className="rounded-md bg-stone-50 px-3 py-2" key={company.slug}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium text-ink">{company.name}</div>
-                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-                        {signal.count} roles
-                      </span>
-                    </div>
-                    <div className="mt-1 text-xs font-medium text-ink">{signal.label}</div>
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
-                      {signal.description}
-                    </p>
-                  </div>
-                ))
-              ) : (
-                <p className="text-xs text-subtle">No unusual signals available yet.</p>
-              )}
-            </div>
-          </Panel>
-
-          <Panel title="Filtered role explorer">
-            <div className="divide-y divide-line">
-              {rolesPage.roles.slice(0, 4).map((role: any) => (
-                <a
-                  className="block py-2 hover:bg-selected/50"
-                  href={role.sourceUrl || FULL_APP_URL}
-                  key={role.id}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  <div className="truncate text-xs font-medium text-ink">{role.title}</div>
-                  <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-muted">
-                    <span className="truncate">
-                      {role.company} · {role.category}
-                    </span>
-                    <span className="shrink-0">{role.country}</span>
-                  </div>
-                </a>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel title="Trend view">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <TrendList
-                items={topCompanies.slice(0, 4).map((company: any) => ({
-                  label: company.name,
-                  value: company.current_roles,
-                }))}
-                title="Company"
-              />
-              <TrendList
-                items={topCategories.slice(0, 4).map((category: any) => ({
-                  label: category.category,
-                  value: category.growth,
-                  max: maxCategory,
-                }))}
-                title="Category"
-              />
-              <TrendList
-                items={topLocations.slice(0, 4).map((location: any) => ({
-                  label: location.country,
-                  value: location.roles,
-                  max: maxLocation,
-                }))}
-                title="Location"
-              />
-            </div>
-          </Panel>
-        </section>
       </div>
     </main>
-  );
-}
-
-function Panel({
-  children,
-  title,
-}: {
-  children: React.ReactNode;
-  title: string;
-}) {
-  return (
-    <div className="rounded-lg border border-line bg-white p-3 shadow-hairline">
-      <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">
-        {title}
-      </h2>
-      <div className="mt-2">{children}</div>
-    </div>
-  );
-}
-
-function TrendList({
-  items,
-  title,
-}: {
-  items: Array<{ label: string; value: number; max?: number }>;
-  title: string;
-}) {
-  const max = Math.max(...items.map((item) => item.max || item.value), 1);
-
-  return (
-    <div>
-      <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-subtle">
-        {title}
-      </div>
-      <div className="space-y-2">
-        {items.map((item) => (
-          <div key={item.label}>
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <span className="truncate text-muted">{item.label}</span>
-              <span className="font-medium tabular-nums text-ink">
-                {item.value.toLocaleString()}
-              </span>
-            </div>
-            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-stone-100">
-              <div
-                className="h-1.5 rounded-full bg-teal-500"
-                style={{ width: `${(item.value / max) * 100}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
