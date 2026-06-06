@@ -195,6 +195,9 @@ export default async function Home({ searchParams }: HomeProps) {
   if (filters.country) detailParams.set("country", filters.country);
   const detailQuery = detailParams.size ? `?${detailParams.toString()}` : "";
   const betsHref = `/bets${detailQuery}`;
+  const companyHrefs = Object.fromEntries(
+    allCompanies.map((company: any) => [company.name, `/company/${company.slug}`])
+  );
 
   return (
     <main className="mx-auto min-h-screen max-w-8xl px-4 py-5 sm:px-6 lg:px-10 xl:px-14">
@@ -239,61 +242,6 @@ export default async function Home({ searchParams }: HomeProps) {
         </div>
       </header>
 
-      {/* --- Metric cards (Suggestions 3 & 5) --- */}
-      <section className="grid gap-3 py-5 sm:grid-cols-2 lg:grid-cols-5">
-        <MetricCard
-          change={totalRolesChange}
-          detail={`Tracked across ${apiCompanies.length} AI companies.`}
-          href="/roles"
-          label="Total open roles"
-          value={totalOpenRoles.toLocaleString()}
-        />
-        <MetricCard
-          change={wowChangeLabel}
-          detail="Momentum is concentrated in infra, data center, and robotics."
-          label={`${rangeLabel} change`}
-          value={
-            hasHistory
-              ? `${Number(weightedWowChange) >= 0 ? "+" : ""}${weightedWowChange}%`
-              : "N/A"
-          }
-        />
-        <MetricCard
-          change={
-            fastestGrowingCompany.change_pct > 0
-              ? `+${fastestGrowingCompany.change_pct}% this period`
-              : "Monitoring"
-          }
-          detail={`${fastestGrowingCompany.name} leads open role count for this view.`}
-          href={`/company/${fastestGrowingCompany.slug}`}
-          label="Fastest growing company"
-          value={fastestGrowingCompany.name}
-        />
-        {/* Suggestion 5: Momentum category replaces Fastest growing role */}
-        <MetricCard
-          change={
-            topCategory.growth > 0
-              ? `${topCategory.growth} open roles`
-              : "Monitoring"
-          }
-          detail="The single category with the most active hiring right now."
-          href={getRoleHref({ category: topCategory.category })}
-          label="Momentum category"
-          value={topCategory.category}
-        />
-        <MetricCard
-          change={
-            topLocation.roles > 0
-              ? `${topLocation.roles} open roles`
-              : "Monitoring"
-          }
-          detail={`${topLocation.topCompany} is the top hiring company here.`}
-          href={getRoleHref({ country: topLocation.country })}
-          label="Top hiring location"
-          value={topLocation.country}
-        />
-      </section>
-
       {/* --- Where each company is placing its bets heatmap --- */}
       {heatmapData.matrix.length > 0 && (
         <section className="rounded-lg border border-line bg-white shadow-hairline">
@@ -313,6 +261,7 @@ export default async function Home({ searchParams }: HomeProps) {
           <div className="p-4">
             <CategoryHeatmap
               companies={heatmapData.companies}
+              companyHrefs={companyHrefs}
               matrix={heatmapData.matrix.slice(0, 8)}
             />
           </div>
@@ -451,6 +400,60 @@ export default async function Home({ searchParams }: HomeProps) {
           <MohamedsRead />
         </aside>
         */}
+      </section>
+
+      {/* --- Metric cards (Suggestions 3 & 5) --- */}
+      <section className="grid gap-3 py-5 sm:grid-cols-2 lg:grid-cols-5">
+        <MetricCard
+          change={totalRolesChange}
+          detail={`Tracked across ${apiCompanies.length} AI companies.`}
+          href="/roles"
+          label="Total open roles"
+          value={totalOpenRoles.toLocaleString()}
+        />
+        <MetricCard
+          change={wowChangeLabel}
+          detail="Momentum is concentrated in infra, data center, and robotics."
+          label={`${rangeLabel} change`}
+          value={
+            hasHistory
+              ? `${Number(weightedWowChange) >= 0 ? "+" : ""}${weightedWowChange}%`
+              : "N/A"
+          }
+        />
+        <MetricCard
+          change={
+            fastestGrowingCompany.change_pct > 0
+              ? `+${fastestGrowingCompany.change_pct}% this period`
+              : "Monitoring"
+          }
+          detail={`${fastestGrowingCompany.name} leads open role count for this view.`}
+          href={`/company/${fastestGrowingCompany.slug}`}
+          label="Fastest growing company"
+          value={fastestGrowingCompany.name}
+        />
+        <MetricCard
+          change={
+            topCategory.growth > 0
+              ? `${topCategory.growth} open roles`
+              : "Monitoring"
+          }
+          detail="The single category with the most active hiring right now."
+          href={getRoleHref({ category: topCategory.category })}
+          label="Momentum category"
+          value={topCategory.category}
+        />
+        <MetricCard
+          change={
+            topLocation.roles > 0
+              ? `${topLocation.roles} open roles`
+              : "Monitoring"
+          }
+          detail={`${topLocation.topCompany} is the top hiring company here.`}
+          href={getRoleHref({ country: topLocation.country })}
+          label="Top hiring location"
+          value={topLocation.country}
+        />
       </section>
 
 

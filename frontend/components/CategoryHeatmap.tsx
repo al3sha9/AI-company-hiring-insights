@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 type HeatmapRow = {
   category: string;
   total: number;
@@ -6,6 +8,7 @@ type HeatmapRow = {
 
 type CategoryHeatmapProps = {
   companies: string[];
+  companyHrefs?: Record<string, string>;
   matrix: HeatmapRow[];
 };
 
@@ -19,7 +22,7 @@ function cellStyle(count: number, max: number): string {
   return "bg-teal-500 text-white";
 }
 
-export function CategoryHeatmap({ companies, matrix }: CategoryHeatmapProps) {
+export function CategoryHeatmap({ companies, companyHrefs = {}, matrix }: CategoryHeatmapProps) {
   // Shorten company names for column headers
   const shortName = (name: string) =>
     name.replace(" AI", "").replace("Microsoft", "MSFT");
@@ -57,7 +60,16 @@ export function CategoryHeatmap({ companies, matrix }: CategoryHeatmapProps) {
             return (
               <tr key={company} className="border-t border-line">
                 <td className="py-2 pr-6 font-medium text-ink">
-                  {shortName(company)}
+                  {companyHrefs[company] ? (
+                    <Link
+                      className="underline-offset-4 hover:text-accent hover:underline"
+                      href={companyHrefs[company]}
+                    >
+                      {shortName(company)}
+                    </Link>
+                  ) : (
+                    shortName(company)
+                  )}
                 </td>
                 {matrix.map((row) => {
                   const count = row.companies[company] || 0;

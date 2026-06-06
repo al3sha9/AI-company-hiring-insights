@@ -37,6 +37,9 @@ export default async function BetsPage({ searchParams }: BetsPageProps) {
     filters.company,
     filters.country,
   ].filter(Boolean);
+  const companyHrefs = Object.fromEntries(
+    allCompanies.map((company: any) => [company.name, `/company/${company.slug}`])
+  );
 
   return (
     <main className="mx-auto min-h-screen max-w-[1800px] px-4 py-5 sm:px-6 lg:px-10 xl:px-14">
@@ -58,6 +61,7 @@ export default async function BetsPage({ searchParams }: BetsPageProps) {
       <section className="mt-5 rounded-lg border border-line bg-white p-4 shadow-hairline">
         <CategoryHeatmap
           companies={heatmapData.companies}
+          companyHrefs={companyHrefs}
           matrix={heatmapData.matrix}
         />
       </section>
