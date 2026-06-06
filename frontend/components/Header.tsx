@@ -85,7 +85,7 @@ function MobileNavigation() {
         className="absolute inset-x-0 top-full mt-4 flex origin-top flex-col rounded-2xl bg-white p-4 text-lg tracking-tight text-slate-900 ring-1 shadow-xl ring-slate-900/5 data-closed:scale-95 data-closed:opacity-0 data-enter:duration-75 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
       >
         <MobileNavLink
-          href="/"
+          href="https://ai-insights.100xbetter.ai/"
         >
           AI Insights
         </MobileNavLink>
@@ -160,7 +160,7 @@ export function Header() {
             </Link>
             <div className="hidden items-center md:flex md:gap-x-5 lg:gap-x-6">
               <NavLink
-                href="/"
+                href="https://ai-insights.100xbetter.ai/"
               >
                 AI Insights
               </NavLink>
