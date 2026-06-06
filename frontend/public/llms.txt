@@ -1,0 +1,27 @@
+# AI Insights
+
+> Strategic hiring intelligence for CEOs and investors tracking leading AI companies through public role data.
+
+AI Insights analyzes public hiring data from official company career pages and recruiting platforms such as Greenhouse, Lever, Ashby, Workday, and Amazon Jobs. The product infers directional strategy signals from role categories, hiring concentration, company-level patterns, source-linked evidence, and trend views.
+
+## Useful URLs
+
+- Home: https://ai-insights.100xbetter.ai/
+- Embed preview: https://ai-insights.100xbetter.ai/embed
+- Company bets heatmap: https://ai-insights.100xbetter.ai/bets
+- Role categories: https://ai-insights.100xbetter.ai/categories
+- Hiring locations: https://ai-insights.100xbetter.ai/locations
+- Role explorer: https://ai-insights.100xbetter.ai/roles
+- Sitemap: https://ai-insights.100xbetter.ai/sitemap.xml
+- Robots: https://ai-insights.100xbetter.ai/robots.txt
+
+## Audience
+
+The intended audience is CEOs, investors, and strategy teams who want early signals about where AI companies are moving before those signals appear in official announcements.
+
+## Important Notes
+
+- Signals are directional interpretations, not official company statements.
+- The app does not collect applicant data or personal profiles.
+- Role links credit and open the original public source when available.
+- The embed route is intended for iframe previews and should not be treated as the canonical product page.

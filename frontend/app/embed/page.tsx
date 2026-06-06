@@ -11,6 +11,10 @@ import {
 export const metadata: Metadata = {
   title: "AI Insights Embed",
   description: "Embed preview for AI hiring strategy signals.",
+  robots: {
+    index: false,
+    follow: true,
+  },
 };
 
 const FULL_APP_URL = "https://ai-insights.100xbetter.ai";
