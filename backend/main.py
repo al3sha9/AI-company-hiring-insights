@@ -1,8 +1,10 @@
 import logging
 import os
+import time
 from datetime import datetime, timezone, timedelta
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable, TypeVar
 
 from fastapi import FastAPI, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +21,43 @@ import scraper.amazon as amazonagi_scraper
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+_RESPONSE_CACHE: dict[str, tuple[float, object]] = {}
+
+
+def _cache_key(name: str, **params) -> str:
+    parts = [name]
+    for key in sorted(params):
+        parts.append(f"{key}={params[key]}")
+    return "|".join(parts)
+
+
+def cached_response(key: str, ttl_seconds: int, factory: Callable[[], T]) -> T:
+    now = time.time()
+    cached = _RESPONSE_CACHE.get(key)
+    if cached and cached[0] > now:
+        return cached[1]  # type: ignore[return-value]
+
+    value = factory()
+    _RESPONSE_CACHE[key] = (now + ttl_seconds, value)
+    return value
+
+
+def get_cached_response(key: str):
+    cached = _RESPONSE_CACHE.get(key)
+    if cached and cached[0] > time.time():
+        return cached[1]
+    return None
+
+
+def set_cached_response(key: str, ttl_seconds: int, value: T) -> T:
+    _RESPONSE_CACHE[key] = (time.time() + ttl_seconds, value)
+    return value
+
+
+def clear_response_cache() -> None:
+    _RESPONSE_CACHE.clear()
 
 
 def fetch_all_roles(
@@ -107,6 +146,11 @@ SCRAPERS: list[tuple[str, object]] = [
 @app.get("/")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "cache_entries": len(_RESPONSE_CACHE)}
 
 
 def _scrape_one(company_slug: str, scraper_module, scraped_at: str) -> dict:
@@ -206,6 +250,7 @@ def trigger_scrape(authorization: str = Header(None)):
     for slug, module in SCRAPERS:
         summary.append(_scrape_one(slug, module, scraped_at))
 
+    clear_response_cache()
     return {"scraped_at": scraped_at, "results": summary}
 
 
@@ -250,6 +295,7 @@ def reclassify_categories(authorization: str = Header(None)):
         offset += PAGE_SIZE
 
     logger.info("Reclassified %d roles", updated)
+    clear_response_cache()
     return {"status": "done", "roles_updated": updated}
 
 
@@ -268,6 +314,7 @@ def reset_roles(authorization: str = Header(None)):
     res = supabase.table("roles").delete().gte("first_seen_at", "2000-01-01").execute()
     deleted = len(res.data) if res.data else "unknown"
     logger.info("reset-roles: deleted %s rows", deleted)
+    clear_response_cache()
     return {
         "status": "done",
         "rows_deleted": deleted,
@@ -371,6 +418,11 @@ def get_companies(
     company_slug: str | None = None,
     country: str | None = None,
 ):
+    cache_key = _cache_key("companies", days=days, company_slug=company_slug, country=country)
+    cached = get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+
     companies_res = supabase.table("companies").select("*").execute()
     companies = companies_res.data
     if company_slug:
@@ -470,7 +522,7 @@ def get_companies(
             ),
         })
 
-    return result
+    return set_cached_response(cache_key, 600, result)
 
 
 @app.get("/company/{slug}")
@@ -479,6 +531,11 @@ def get_company(
     days: int = Query(7, ge=1, le=365),
     country: str | None = None,
 ):
+    cache_key = _cache_key("company", slug=slug, days=days, country=country)
+    cached = get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+
     comp_res = supabase.table("companies").select("*").eq("slug", slug).execute()
     if not comp_res.data:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -516,14 +573,14 @@ def get_company(
 
     sorted_roles = sorted(roles, key=lambda x: x.get("last_seen_at") or "", reverse=True)[:50]
 
-    return {
+    return set_cached_response(cache_key, 600, {
         "slug": comp["slug"],
         "name": comp["name"],
         "snapshots": snaps_res.data,
         "categories": categories_list,
         "countries": countries_list,
         "roles": sorted_roles
-    }
+    })
 
 
 @app.get("/roles")
@@ -535,6 +592,19 @@ def get_roles(
     limit: int = Query(50, ge=1, le=50),
     offset: int = Query(0, ge=0),
 ):
+    cache_key = _cache_key(
+        "roles",
+        days=days,
+        company_slug=company_slug,
+        category=category,
+        country=country,
+        limit=limit,
+        offset=offset,
+    )
+    cached = get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+
     cutoff = recent_cutoff(days)
     roles = fetch_all_roles("company_slug, category, country", cutoff, company_slug=company_slug, country=country)
     if category:
@@ -585,7 +655,7 @@ def get_roles(
         })
 
     next_offset = offset + len(result)
-    return {
+    return set_cached_response(cache_key, 300, {
         "roles": result,
         "total": total,
         "limit": limit,
@@ -600,7 +670,7 @@ def get_roles(
             "category": summarize("category"),
             "country": summarize("country"),
         },
-    }
+    })
 
 
 @app.get("/categories")
@@ -609,6 +679,11 @@ def get_categories(
     company_slug: str | None = None,
     country: str | None = None,
 ):
+    cache_key = _cache_key("categories", days=days, company_slug=company_slug, country=country)
+    cached = get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+
     # Only count roles seen in the most recent scrape window to match snapshot counts.
     roles = fetch_all_roles("category", recent_cutoff(days), company_slug, country)
 
@@ -620,7 +695,7 @@ def get_categories(
     result = [{"category": k, "count": v} for k, v in categories.items()]
     result.sort(key=lambda x: x["count"], reverse=True)
 
-    return result
+    return set_cached_response(cache_key, 600, result)
 
 
 @app.get("/category-matrix")
@@ -629,6 +704,11 @@ def get_category_matrix(
     company_slug: str | None = None,
     country: str | None = None,
 ):
+    cache_key = _cache_key("category_matrix", days=days, company_slug=company_slug, country=country)
+    cached = get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+
     """
     Returns role counts broken down by category × company.
     Used to render the heatmap on the dashboard.
@@ -662,7 +742,7 @@ def get_category_matrix(
         })
 
     result.sort(key=lambda x: x["total"], reverse=True)
-    return {"companies": all_companies, "matrix": result}
+    return set_cached_response(cache_key, 600, {"companies": all_companies, "matrix": result})
 
 
 @app.get("/categories/seniority")
@@ -671,6 +751,11 @@ def get_category_seniority(
     company_slug: str | None = None,
     country: str | None = None,
 ):
+    cache_key = _cache_key("category_seniority", days=days, company_slug=company_slug, country=country)
+    cached = get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+
     """
     Returns seniority breakdown (senior / mid / junior) per category.
     Used to render split bars on the dashboard.
@@ -707,7 +792,7 @@ def get_category_seniority(
         })
 
     result.sort(key=lambda x: x["total"], reverse=True)
-    return result
+    return set_cached_response(cache_key, 600, result)
 
 
 @app.get("/unusual-signals")
@@ -716,6 +801,11 @@ def get_unusual_signals(
     company_slug: str | None = None,
     country: str | None = None,
 ):
+    cache_key = _cache_key("unusual_signals", days=days, company_slug=company_slug, country=country)
+    cached = get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+
     """
     Detects unusual role patterns per company by scanning titles for
     keywords that are atypical for a software/AI company but carry
@@ -809,4 +899,4 @@ def get_unusual_signals(
         if best:
             result[slug] = best
 
-    return result
+    return set_cached_response(cache_key, 600, result)

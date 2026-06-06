@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTransition } from "react";
 
 type FilterBarProps = {
   companies: Array<{ slug: string; name: string }>;
@@ -10,6 +11,7 @@ type FilterBarProps = {
 export function FilterBar({ companies, countries }: FilterBarProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
   const currentCompany = searchParams.get("company") || "";
   const currentCountry = searchParams.get("country") || "";
@@ -22,11 +24,18 @@ export function FilterBar({ companies, countries }: FilterBarProps) {
     } else {
       params.delete(key);
     }
-    router.push(`/?${params.toString()}`);
+    startTransition(() => {
+      router.push(`/?${params.toString()}`);
+    });
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="relative flex flex-wrap items-center gap-2">
+      {isPending && (
+        <span className="absolute -top-5 right-0 text-[11px] font-medium text-accent">
+          Loading live data...
+        </span>
+      )}
       <div className="inline-flex overflow-hidden rounded-lg border border-line bg-white">
         {["7D", "30D", "90D"].map((range) => (
           <button
@@ -37,6 +46,7 @@ export function FilterBar({ companies, countries }: FilterBarProps) {
             }
             key={range}
             type="button"
+            disabled={isPending}
             onClick={() => pushParam("range", range)}
           >
             {range}
@@ -47,6 +57,7 @@ export function FilterBar({ companies, countries }: FilterBarProps) {
       <select
         aria-label="Company filter"
         className="h-9 rounded-lg border border-line bg-white px-3 text-xs font-medium text-ink outline-none"
+        disabled={isPending}
         value={currentCompany}
         onChange={(e) => pushParam("company", e.target.value)}
       >
@@ -61,6 +72,7 @@ export function FilterBar({ companies, countries }: FilterBarProps) {
       <select
         aria-label="Location filter"
         className="h-9 rounded-lg border border-line bg-white px-3 text-xs font-medium text-ink outline-none"
+        disabled={isPending}
         value={currentCountry}
         onChange={(e) => pushParam("country", e.target.value)}
       >
