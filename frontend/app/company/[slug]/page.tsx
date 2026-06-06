@@ -4,16 +4,13 @@ import { Sparkline } from "@/components/Sparkline";
 import { CompanyLogo } from "@/components/CompanyLogo";
 import { PaginatedRoleTable } from "@/components/PaginatedRoleTable";
 import { getRoleHref } from "@/lib/data";
-import { getCompanies, getCompany, getRoles } from "@/lib/api";
+import { getCompany, getRoles } from "@/lib/api";
+
+export const dynamic = "force-dynamic";
 
 type CompanyPageProps = {
   params: Promise<{ slug: string }>;
 };
-
-export async function generateStaticParams() {
-  const companies = await getCompanies();
-  return companies.map((company: any) => ({ slug: company.slug }));
-}
 
 export async function generateMetadata({ params }: CompanyPageProps) {
   const { slug } = await params;
