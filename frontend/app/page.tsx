@@ -538,8 +538,8 @@ export default async function Home({ searchParams }: HomeProps) {
         </a>
         : This prototype uses public hiring data from official company career
         pages and the recruiting platforms that host those pages, including
-        Greenhouse, Lever, Ashby, Workday, and Amazon Jobs where available. Role
-        links credit the original source. We do not collect applicant data or
+        Greenhouse, Lever, Ashby, and Workday where available. Role links
+        credit the original source. We do not collect applicant data or
         personal profiles. Categories and strategy signals are inferred from
         public role metadata and should be treated as directional, not official
         company statements.

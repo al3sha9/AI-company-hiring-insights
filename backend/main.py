@@ -29,6 +29,7 @@ _RESPONSE_CACHE: dict[str, tuple[float, object]] = {}
 UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL", "").rstrip("/")
 UPSTASH_REDIS_REST_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
 CACHE_PREFIX = os.getenv("CACHE_PREFIX", "ai-insights-cache")
+CACHE_VERSION = "v2"
 REDIS_TIMEOUT_SECONDS = 2.0
 
 
@@ -44,7 +45,7 @@ def _redis_enabled() -> bool:
 
 
 def _redis_key(key: str) -> str:
-    return f"{CACHE_PREFIX}:{key}"
+    return f"{CACHE_PREFIX}:{CACHE_VERSION}:{key}"
 
 
 def _redis_command(command: list[object]):
@@ -148,6 +149,49 @@ def fetch_all_roles(
 
 def recent_cutoff(days: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+
+def parse_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def latest_scrape_window_cutoff() -> str:
+    latest = (
+        supabase.table("role_snapshots")
+        .select("scraped_at")
+        .order("scraped_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    latest_at = parse_timestamp((latest.data or [{}])[0].get("scraped_at"))
+    if latest_at is None:
+        return recent_cutoff(7)
+    # Scrapers in one run can finish a few minutes apart. A 24h window captures
+    # the latest complete scrape batch without pulling old closed roles.
+    return (latest_at - timedelta(hours=24)).isoformat()
+
+
+def effective_role_cutoff(
+    days: int,
+    company_slug: str | None = None,
+    country: str | None = None,
+) -> str:
+    cutoff = recent_cutoff(days)
+    query = supabase.table("roles").select("id").gte("last_seen_at", cutoff).limit(1)
+    if company_slug:
+        query = query.eq("company_slug", company_slug)
+    if country:
+        query = query.eq("country", country)
+
+    if query.execute().data:
+        return cutoff
+
+    return latest_scrape_window_cutoff()
 
 app = FastAPI()
 
@@ -486,7 +530,7 @@ def get_companies(
     target_date = now - timedelta(days=days)
     active_roles = fetch_all_roles(
         "company_slug, country",
-        recent_cutoff(days),
+        effective_role_cutoff(days, company_slug=company_slug, country=country),
         company_slug=company_slug,
         country=country,
     )
@@ -597,7 +641,12 @@ def get_company(
     # Filter to roles seen in the most recent scrape window only.
     # The roles table is append-only and accumulates all historic rows,
     # so without this filter category/location counts are inflated.
-    roles = fetch_all_roles("*", recent_cutoff(days), company_slug=slug, country=country)
+    roles = fetch_all_roles(
+        "*",
+        effective_role_cutoff(days, company_slug=slug, country=country),
+        company_slug=slug,
+        country=country,
+    )
 
     categories = Counter()
     countries = Counter()
@@ -648,8 +697,13 @@ def get_roles(
     if cached is not None:
         return cached
 
-    cutoff = recent_cutoff(days)
-    roles = fetch_all_roles("company_slug, category, country", cutoff, company_slug=company_slug, country=country)
+    cutoff = effective_role_cutoff(days, company_slug=company_slug, country=country)
+    roles = fetch_all_roles(
+        "company_slug, category, country",
+        cutoff,
+        company_slug=company_slug,
+        country=country,
+    )
     if category:
         roles = [role for role in roles if (role.get("category") or "Uncategorized") == category]
 
@@ -728,7 +782,12 @@ def get_categories(
         return cached
 
     # Only count roles seen in the most recent scrape window to match snapshot counts.
-    roles = fetch_all_roles("category", recent_cutoff(days), company_slug, country)
+    roles = fetch_all_roles(
+        "category",
+        effective_role_cutoff(days, company_slug=company_slug, country=country),
+        company_slug,
+        country,
+    )
 
     categories = Counter()
     for r in roles:
@@ -758,7 +817,12 @@ def get_category_matrix(
     Only counts roles seen in the most recent scrape window so numbers
     match the snapshot-based company table.
     """
-    roles_data = fetch_all_roles("company_slug, category", recent_cutoff(days), company_slug, country)
+    roles_data = fetch_all_roles(
+        "company_slug, category",
+        effective_role_cutoff(days, company_slug=company_slug, country=country),
+        company_slug,
+        country,
+    )
     companies_res = supabase.table("companies").select("slug, name").execute()
 
     company_names = {c["slug"]: c["name"] for c in companies_res.data}
@@ -804,7 +868,12 @@ def get_category_seniority(
     Used to render split bars on the dashboard.
     Only counts roles seen in the most recent scrape window.
     """
-    roles_data = fetch_all_roles("category, seniority", recent_cutoff(days), company_slug, country)
+    roles_data = fetch_all_roles(
+        "category, seniority",
+        effective_role_cutoff(days, company_slug=company_slug, country=country),
+        company_slug,
+        country,
+    )
 
     SENIOR = {"Senior", "Staff", "Lead", "Principal", "Director"}
     JUNIOR = {"Junior", "Associate", "Entry", "Intern"}
@@ -908,8 +977,12 @@ def get_unusual_signals(
          "Defense and simulation", "Aviation hires point to government defense contracts or building physical-world simulation data"),
     ]
 
-
-    roles_data = fetch_all_roles("company_slug, title", recent_cutoff(days), company_slug, country)
+    roles_data = fetch_all_roles(
+        "company_slug, title",
+        effective_role_cutoff(days, company_slug=company_slug, country=country),
+        company_slug,
+        country,
+    )
 
     company_titles: dict[str, list[str]] = {}
     for r in roles_data:

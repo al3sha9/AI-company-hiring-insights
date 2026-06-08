@@ -12,7 +12,10 @@ class SignalTests(unittest.TestCase):
             {"company_slug": "nvidia", "title": "Senior DGX Cloud AI Infrastructure Software Engineer"},
         ]
 
-        with patch("main.fetch_all_roles", return_value=roles):
+        with patch(
+            "main.effective_role_cutoff",
+            return_value="2026-06-01T00:00:00+00:00",
+        ), patch("main.fetch_all_roles", return_value=roles):
             signal = get_unusual_signals(days=30, company_slug="nvidia")["nvidia"]
 
         self.assertEqual(signal["label"], "Competing in AI infrastructure")
@@ -27,7 +30,10 @@ class SignalTests(unittest.TestCase):
             {"company_slug": "mistral", "title": "Privacy Legal Counsel"},
         ]
 
-        with patch("main.fetch_all_roles", return_value=roles):
+        with patch(
+            "main.effective_role_cutoff",
+            return_value="2026-06-01T00:00:00+00:00",
+        ), patch("main.fetch_all_roles", return_value=roles):
             signal = get_unusual_signals(days=30, company_slug="mistral")["mistral"]
 
         self.assertEqual(signal["label"], "Building an AI deployment consultancy")
@@ -59,7 +65,10 @@ class SignalTests(unittest.TestCase):
         roles_query.eq.return_value = roles_query
         roles_query.execute.return_value = page
 
-        with patch("main.fetch_all_roles", return_value=roles), patch(
+        with patch(
+            "main.effective_role_cutoff",
+            return_value="2026-06-01T00:00:00+00:00",
+        ), patch("main.fetch_all_roles", return_value=roles), patch(
             "main.supabase.table", side_effect=lambda name: companies_table if name == "companies" else roles_query
         ):
             result = get_roles(days=30, company_slug="nvidia", limit=50, offset=0)
