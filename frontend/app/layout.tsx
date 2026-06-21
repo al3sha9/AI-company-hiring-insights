@@ -20,6 +20,14 @@ export const metadata: Metadata = {
       "Strategic hiring intelligence for CEOs and investors tracking AI companies, infrastructure bets, deployment signals, and market direction.",
     url: "/",
     siteName: "AI Insights",
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "AI Insights | AI Company Hiring Signals",
+      },
+    ],
     type: "website",
   },
   twitter: {
@@ -27,6 +35,7 @@ export const metadata: Metadata = {
     title: "AI Insights | AI Company Hiring Signals",
     description:
       "Track AI company strategy through public hiring data and evidence-backed signals.",
+    images: ["/og.png"],
   },
   robots: {
     index: true,
