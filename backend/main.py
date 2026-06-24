@@ -100,6 +100,22 @@ def clear_response_cache() -> None:
         _redis_command(["DEL", *redis_keys])
 
 
+def revalidate_frontend_cache() -> None:
+    url = os.getenv("FRONTEND_REVALIDATE_URL", "").strip()
+    if not url:
+        return
+
+    headers = {}
+    secret = os.getenv("REVALIDATE_SECRET", "").strip()
+    if secret:
+        headers["Authorization"] = f"Bearer {secret}"
+
+    try:
+        httpx.post(url, headers=headers, timeout=5)
+    except Exception as exc:
+        logger.warning("Frontend cache revalidation failed: %s", exc)
+
+
 def fetch_all_roles(
     columns: str,
     recent_cutoff: str,
@@ -338,6 +354,7 @@ def trigger_scrape(authorization: str = Header(None)):
         summary.append(_scrape_one(slug, module, scraped_at))
 
     clear_response_cache()
+    revalidate_frontend_cache()
     return {"scraped_at": scraped_at, "results": summary}
 
 

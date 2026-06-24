@@ -3,6 +3,8 @@ const API_URL =
   (process.env.VERCEL
     ? "https://ai-company-hiring-insights.vercel.app"
     : "http://localhost:8000");
+const API_CACHE_OPTIONS = { next: { revalidate: 3600, tags: ["ai-insights-api"] } };
+const API_CACHE_VERSION = "2026-06-25-1";
 
 export type DashboardFilters = {
   days?: number;
@@ -15,6 +17,7 @@ export type DashboardFilters = {
 
 function withFilters(path: string, filters: DashboardFilters = {}) {
   const params = new URLSearchParams();
+  params.set("_v", API_CACHE_VERSION);
   if (filters.days) params.set("days", filters.days.toString());
   if (filters.companySlug) params.set("company_slug", filters.companySlug);
   if (filters.category) params.set("category", filters.category);
@@ -25,13 +28,13 @@ function withFilters(path: string, filters: DashboardFilters = {}) {
 }
 
 export async function getCompanies(filters: DashboardFilters = {}) {
-  const res = await fetch(withFilters("/companies", filters), { next: { revalidate: 3600 } });
+  const res = await fetch(withFilters("/companies", filters), API_CACHE_OPTIONS);
   if (!res.ok) throw new Error("Failed to fetch companies");
   return res.json();
 }
 
 export async function getCompany(slug: string, filters: DashboardFilters = {}) {
-  const res = await fetch(withFilters(`/company/${slug}`, filters), { next: { revalidate: 3600 } });
+  const res = await fetch(withFilters(`/company/${slug}`, filters), API_CACHE_OPTIONS);
   if (!res.ok) throw new Error("Failed to fetch company details");
   return res.json();
 }
@@ -102,7 +105,7 @@ export async function getLocations(filters: DashboardFilters = {}) {
 }
 
 export async function getCategoryMatrix(filters: DashboardFilters = {}) {
-  const res = await fetch(withFilters("/category-matrix", filters), { next: { revalidate: 3600 } });
+  const res = await fetch(withFilters("/category-matrix", filters), API_CACHE_OPTIONS);
   if (!res.ok) throw new Error("Failed to fetch category matrix");
   return res.json() as Promise<{
     companies: string[];
@@ -111,7 +114,7 @@ export async function getCategoryMatrix(filters: DashboardFilters = {}) {
 }
 
 export async function getCategorySeniority(filters: DashboardFilters = {}) {
-  const res = await fetch(withFilters("/categories/seniority", filters), { next: { revalidate: 3600 } });
+  const res = await fetch(withFilters("/categories/seniority", filters), API_CACHE_OPTIONS);
   if (!res.ok) throw new Error("Failed to fetch category seniority");
   return res.json() as Promise<Array<{
     category: string; total: number;
@@ -120,13 +123,13 @@ export async function getCategorySeniority(filters: DashboardFilters = {}) {
 }
 
 export async function getUnusualSignals(filters: DashboardFilters = {}) {
-  const res = await fetch(withFilters("/unusual-signals", filters), { next: { revalidate: 3600 } });
+  const res = await fetch(withFilters("/unusual-signals", filters), API_CACHE_OPTIONS);
   if (!res.ok) return {} as Record<string, { label: string; count: number; description: string; evidence: string[] }>;
   return res.json() as Promise<Record<string, { label: string; count: number; description: string; evidence: string[] }>>;
 }
 
 export async function getRoles(filters: DashboardFilters = {}) {
-  const res = await fetch(withFilters("/roles", filters), { next: { revalidate: 3600 } });
+  const res = await fetch(withFilters("/roles", filters), API_CACHE_OPTIONS);
   if (!res.ok) throw new Error("Failed to fetch roles");
   return res.json() as Promise<RolesResponse>;
 }
