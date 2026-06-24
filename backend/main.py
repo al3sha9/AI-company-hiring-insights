@@ -29,7 +29,7 @@ _RESPONSE_CACHE: dict[str, tuple[float, object]] = {}
 UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL", "").rstrip("/")
 UPSTASH_REDIS_REST_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
 CACHE_PREFIX = os.getenv("CACHE_PREFIX", "ai-insights-cache")
-CACHE_VERSION = "v2"
+CACHE_VERSION = "v3"
 REDIS_TIMEOUT_SECONDS = 2.0
 
 
@@ -925,56 +925,140 @@ def get_unusual_signals(
     Returns the top detected signal per company slug.
     """
     # Before adding or changing signal copy, follow SIGNAL_WRITING_PROMPT.md.
-    PATTERNS: list[tuple[list[str], str, str]] = [
+    PATTERNS: list[dict] = [
         # Science / RLHF trainers (xAI, Anthropic)
-        (["tutor", "math", "biolog", "chemist", "physic", "earth sci", "geolog", "astro"],
-         "Training AI on science", "Hiring scientists to teach the model, betting on scientific reasoning as a competitive edge"),
+        {
+            "keywords": ["tutor", "math", "biolog", "chemist", "physic", "earth sci", "geolog", "astro"],
+            "label": "Training AI on science",
+            "description": "Hiring scientists to teach the model, betting on scientific reasoning as a competitive edge",
+        },
         # Data labeling / annotation
-        (["annotator", "labeler", "data label", "rater", "content reviewer"],
-         "Building better training data", "More human reviewers means a smarter model, investing in quality, not just speed"),
+        {
+            "keywords": [
+                "annotator", "labeler", "data label", "rater", "content reviewer",
+                "quality auditor", "data quality", "data services", "data associate", "training specialist",
+            ],
+            "label": "Building better training data",
+            "description": "More human reviewers means a smarter model, investing in quality, not just speed",
+            "by_company": {
+                "amazonagi": {
+                    "label": "Scaling AGI data operations",
+                    "description": "Amazon AGI is hiring data quality, auditing, and training roles, signaling a large human feedback operation behind model improvement",
+                },
+            },
+        },
         # Safety / red team
-        (["red team", "redteam", "adversarial", "jailbreak", "safety evaluator"],
-         "Testing for weaknesses", "Finding flaws before enterprise clients do, reducing liability and unlocking bigger deals"),
+        {
+            "keywords": ["red team", "redteam", "adversarial", "jailbreak", "safety evaluator"],
+            "label": "Testing for weaknesses",
+            "description": "Finding flaws before enterprise clients do, reducing liability and unlocking bigger deals",
+        },
         # Trust, policy, ethics
-        (["ethicist", "responsible ai", "trust & safety", "trust and safety",
-          "content policy", "community policy"],
-         "Avoiding regulatory trouble", "Building guardrails needed to scale without getting fined or shut down"),
+        {
+            "keywords": [
+                "ethicist", "responsible ai", "trust & safety", "trust and safety",
+                "content policy", "community policy",
+            ],
+            "label": "Avoiding regulatory trouble",
+            "description": "Building guardrails needed to scale without getting fined or shut down",
+        },
         # Government / regulatory affairs (OpenAI, Anthropic)
-        (["policy", "government affairs", "regulatory affairs",
-          "public affairs", "legislation", "government relation"],
-         "Going after government contracts", "Government AI contracts are among the largest deals available, and this is the sales team for that"),
+        {
+            "keywords": [
+                "policy", "government affairs", "regulatory affairs",
+                "public affairs", "legislation", "government relation",
+            ],
+            "label": "Going after government contracts",
+            "description": "Government AI contracts are among the largest deals available, and this is the sales team for that",
+        },
         # Forward-deployed AI / sovereign enterprise rollouts (Mistral)
-        (["deployment strategist", "forward deployed", "sovereign institution",
-          "critical and sovereign", "ai4engineering", "applied ai"],
-         "Building an AI deployment consultancy", "Mistral is hiring deployment strategists and forward-deployed AI engineers, signaling a services layer around its models that competes with Accenture and PwC for enterprise AI implementation"),
+        {
+            "keywords": [
+                "deployment strategist", "forward deployed", "sovereign institution",
+                "critical and sovereign", "ai4engineering", "applied ai",
+            ],
+            "label": "Building an AI deployment consultancy",
+            "description": "Hiring deployment strategists and forward-deployed AI engineers signals a services layer around model implementation",
+            "by_company": {
+                "anthropic": {
+                    "label": "Pushing Claude into enterprises",
+                    "description": "Anthropic is hiring applied AI architects and industry account roles, signaling a stronger push to turn Claude into deployed enterprise workflows",
+                },
+                "openai": {
+                    "label": "Embedding AI inside customers",
+                    "description": "OpenAI is hiring forward-deployed and deployment engineers, signaling hands-on enterprise and government implementation, not just API access",
+                },
+                "perplexityai": {
+                    "label": "Taking AI search into enterprise workflows",
+                    "description": "Perplexity is hiring applied AI and enterprise experience roles, signaling a move from consumer search toward workplace deployment",
+                },
+                "mistral": {
+                    "label": "Building an AI deployment consultancy",
+                    "description": "Mistral is hiring deployment strategists and forward-deployed AI engineers, signaling a services layer around its models that competes with Accenture and PwC for enterprise AI implementation",
+                },
+            },
+        },
         # Legal / compliance
-        (["lawyer", "attorney", "legal counsel", "general counsel",
-          "compliance", "legal advisor"],
-         "Legal expansion", "Scaling legal capacity, a prerequisite for large enterprise deals and regulated markets"),
+        {
+            "keywords": ["lawyer", "attorney", "legal counsel", "general counsel", "compliance", "legal advisor"],
+            "label": "Legal expansion",
+            "description": "Scaling legal capacity, a prerequisite for large enterprise deals and regulated markets",
+        },
         # Infrastructure / data center ops (Nvidia, OpenAI Stargate, CoreWeave)
-        (["data center", "datacenter", "ai infrastructure", "dgx cloud",
-          "cluster", "facilities", "site reliability", "power",
-          "mechanical engineer", "electrical engineer", "hvac"],
-         "Competing in AI infrastructure", "Data center, power, and AI infrastructure roles signal a move beyond chips into full-stack AI compute, competing with hyperscalers like Amazon and Google"),
+        {
+            "keywords": [
+                "data center", "datacenter", "ai infrastructure", "dgx cloud",
+                "cluster", "facilities", "site reliability", "power",
+                "mechanical engineer", "electrical engineer", "hvac",
+            ],
+            "label": "Competing in AI infrastructure",
+            "description": "Data center, power, and AI infrastructure roles signal a move beyond chips into full-stack AI compute, competing with hyperscalers like Amazon and Google",
+            "by_company": {
+                "coreweave": {
+                    "label": "Expanding AI cloud capacity",
+                    "description": "CoreWeave is hiring data center, power, and infrastructure roles, signaling continued expansion of the physical cloud capacity AI labs depend on",
+                },
+            },
+        },
         # Creative domain experts (OpenAI Sora, image gen models)
-        (["filmmaker", "cinematograph", "video producer", "creative director",
-          "concept artist", "animator", "storyboard", "photographer"],
-         "Expanding into video and image AI", "Hiring creatives to build visual AI means moving beyond text into a much bigger market"),
+        {
+            "keywords": [
+                "filmmaker", "cinematograph", "video producer", "creative director",
+                "concept artist", "animator", "storyboard", "photographer",
+            ],
+            "label": "Expanding into video and image AI",
+            "description": "Hiring creatives to build visual AI means moving beyond text into a much bigger market",
+        },
         # Medical / healthcare
-        (["doctor", "physician", "nurse", "clinical", "radiolog", "patholog"],
-         "Entering healthcare", "Hiring doctors and clinicians points toward healthcare AI, a market with strong pricing and high switching costs"),
+        {
+            "keywords": ["doctor", "physician", "nurse", "clinical", "radiolog", "patholog"],
+            "label": "Entering healthcare",
+            "description": "Hiring doctors and clinicians points toward healthcare AI, a market with strong pricing and high switching costs",
+        },
         # Economics research
-        (["economist", "economic research", "market design", "welfare"],
-         "Pricing and monetization strategy", "Hiring economists to design how they charge signals serious work on revenue models"),
+        {
+            "keywords": ["economist", "economic research", "market design", "welfare"],
+            "label": "Pricing and monetization strategy",
+            "description": "Hiring economists to design how they charge signals serious work on revenue models",
+        },
         # Alignment / safety research (distinct from red team)
-        (["alignment", "interpretab", "mechanistic", "scalable oversight"],
-         "Betting on long-term AI safety", "Deep research into keeping AI predictable and under control signals how seriously they take what comes next"),
+        {
+            "keywords": ["alignment", "interpretab", "mechanistic", "scalable oversight"],
+            "label": "Betting on long-term AI safety",
+            "description": "Deep research into keeping AI predictable and under control signals how seriously they take what comes next",
+        },
         # Robotics / physical AI
-        (["robotics", "mechatronics", "actuator", "embodied", "manipulation"],
-         "Moving AI into the physical world", "Robots and hardware expand the company from software into physical products with high barriers to copy"),
+        {
+            "keywords": ["robotics", "mechatronics", "actuator", "embodied", "manipulation"],
+            "label": "Moving AI into the physical world",
+            "description": "Robots and hardware expand the company from software into physical products with high barriers to copy",
+        },
         # Aviation / aerospace
-        (["pilot", "aviation", "aerospace", "flight"],
-         "Defense and simulation", "Aviation hires point to government defense contracts or building physical-world simulation data"),
+        {
+            "keywords": ["pilot", "aviation", "aerospace", "flight"],
+            "label": "Defense and simulation",
+            "description": "Aviation hires point to government defense contracts or building physical-world simulation data",
+        },
     ]
 
     roles_data = fetch_all_roles(
@@ -984,24 +1068,32 @@ def get_unusual_signals(
         country,
     )
 
-    company_titles: dict[str, list[str]] = {}
+    company_titles: dict[str, list[tuple[str, str]]] = {}
     for r in roles_data:
         slug = r.get("company_slug") or ""
-        title = (r.get("title") or "").lower()
-        company_titles.setdefault(slug, []).append(title)
+        title = r.get("title") or ""
+        company_titles.setdefault(slug, []).append((title, title.lower()))
 
     result: dict[str, dict] = {}
     for slug, titles in company_titles.items():
         best: dict | None = None
-        for keywords, label, description in PATTERNS:
-            matched = [t for t in titles if any(kw in t for kw in keywords)]
+        for pattern in PATTERNS:
+            keywords = pattern["keywords"]
+            matched = [
+                original
+                for original, lowered in titles
+                if any(keyword in lowered for keyword in keywords)
+            ]
             if len(matched) >= 2:
                 if best is None or len(matched) > best["count"]:
+                    company_override = pattern.get("by_company", {}).get(slug, {})
+                    label = company_override.get("label", pattern["label"])
+                    description = company_override.get("description", pattern["description"])
                     evidence = sorted(
                         set(matched),
                         key=lambda title: (
-                            -sum(keyword in title for keyword in keywords if keyword != "tutor"),
-                            -sum(keyword in title for keyword in keywords),
+                            -sum(keyword in title.lower() for keyword in keywords if keyword != "tutor"),
+                            -sum(keyword in title.lower() for keyword in keywords),
                             len(title),
                             title,
                         ),
