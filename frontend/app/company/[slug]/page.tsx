@@ -61,7 +61,7 @@ export default async function CompanyPage({ params }: CompanyPageProps) {
   const totalLocationRoles = locations.reduce((acc: number, l: any) => acc + l.count, 0) || 1;
 
   const currentOpenRoles = trendValues.at(-1) ?? 0;
-  const previousOpenRoles = trendValues.length > 1 ? trendValues[0] : currentOpenRoles;
+  const previousOpenRoles = trendValues.length > 1 ? trendValues.at(-2) ?? currentOpenRoles : currentOpenRoles;
   const wowChange =
     previousOpenRoles > 0
       ? Math.round(((currentOpenRoles - previousOpenRoles) / previousOpenRoles) * 100)

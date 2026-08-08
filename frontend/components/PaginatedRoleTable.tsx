@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { getRoles, type DashboardFilters, type RolesResponse } from "@/lib/api";
+import type { DashboardFilters, RolesResponse } from "@/lib/api-types";
 import { RoleTable, type Role } from "@/components/RoleTable";
 
 type PaginatedRoleTableProps = {
@@ -35,11 +35,21 @@ export function PaginatedRoleTable({
     setIsLoading(true);
     setError("");
     try {
-      const page = await getRoles({
-        ...filters,
-        limit: PAGE_SIZE,
-        offset: nextOffset,
+      const params = new URLSearchParams();
+      if (filters.days) params.set("days", filters.days.toString());
+      if (filters.companySlug) params.set("company_slug", filters.companySlug);
+      if (filters.category) params.set("category", filters.category);
+      if (filters.country) params.set("country", filters.country);
+      params.set("limit", PAGE_SIZE.toString());
+      params.set("offset", nextOffset.toString());
+
+      const response = await fetch(`/api/roles?${params.toString()}`, {
+        cache: "no-store",
       });
+      if (!response.ok) {
+        throw new Error("Failed to load roles");
+      }
+      const page = (await response.json()) as RolesResponse;
       setRoles(page.roles);
       setOffset(page.offset);
     } catch {

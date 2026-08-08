@@ -1,10 +1,9 @@
-"""
-Mistral scraper using the Lever public API.
-Lever API pattern: https://api.lever.co/v0/postings/{company_id}?mode=json
-"""
+"""Mistral scraper using the Ashby public job-board API."""
 
 import logging
+
 import httpx
+
 from scraper import RoleSchema
 from scraper.greenhouse import (
     infer_category,
@@ -16,65 +15,58 @@ from scraper.greenhouse import (
 logger = logging.getLogger(__name__)
 
 COMPANY_SLUG = "mistral"
-LEVER_COMPANY_ID = "mistral"
-LEVER_API = f"https://api.lever.co/v0/postings/{LEVER_COMPANY_ID}?mode=json"
+ASHBY_API = "https://api.ashbyhq.com/posting-api/job-board/mistral.ai"
 
 
 def scrape() -> list[RoleSchema]:
-    """Fetch all Mistral jobs from Lever and return RoleSchema objects."""
-    logger.info("[%s] Fetching Lever jobs from %s", COMPANY_SLUG, LEVER_API)
+    """Fetch all Mistral jobs from Ashby and return RoleSchema objects."""
+    logger.info("[%s] Fetching Ashby jobs from %s", COMPANY_SLUG, ASHBY_API)
 
     try:
         with httpx.Client(timeout=30) as client:
-            response = client.get(LEVER_API)
+            response = client.get(ASHBY_API)
             response.raise_for_status()
-            jobs = response.json()
+            data = response.json()
     except httpx.HTTPStatusError as exc:
         logger.error("[%s] HTTP error %s: %s", COMPANY_SLUG, exc.response.status_code, exc)
         return []
     except Exception as exc:
-        logger.error("[%s] Failed to fetch Lever jobs: %s", COMPANY_SLUG, exc)
+        logger.error("[%s] Failed to fetch Ashby jobs: %s", COMPANY_SLUG, exc)
         return []
 
-    if not isinstance(jobs, list):
-        logger.error("[%s] Unexpected Lever response format", COMPANY_SLUG)
+    job_postings = data.get("jobs", [])
+    if not isinstance(job_postings, list):
+        logger.error("[%s] Unexpected Ashby response format", COMPANY_SLUG)
         return []
 
-    logger.info("[%s] Fetched %d postings", COMPANY_SLUG, len(jobs))
+    logger.info("[%s] Fetched %d postings", COMPANY_SLUG, len(job_postings))
 
     roles: list[RoleSchema] = []
-    for job in jobs:
+    for job in job_postings:
         try:
-            title: str = job.get("text", "").strip()
-            source_url: str = job.get("hostedUrl", "")
-
+            title: str = job.get("title", "").strip()
+            source_url: str = job.get("jobUrl", "")
             if not title or not source_url:
                 continue
 
-            # Lever nests metadata under "categories"
-            categories: dict = job.get("categories", {})
-            location: str = categories.get("location", "") or ""
-            team: str = categories.get("team", "") or ""
-            department: str = categories.get("department", "") or ""
-            commitment: str = categories.get("commitment", "") or ""  # e.g. "Full-time"
-
-            # Work mode: Lever sometimes puts it in commitment or location
-            work_mode = infer_work_mode(f"{location} {commitment}")
+            location: str = job.get("location", "") or ""
+            department: str = job.get("department", "") or ""
+            team: str = job.get("team", "") or ""
+            workplace_type: str = job.get("workplaceType", "") or ""
 
             roles.append(
                 RoleSchema(
                     title=title,
                     source_url=source_url,
-                    category=infer_category(f"{team} {department}", title),
+                    category=infer_category(f"{department} {team}", title),
                     location=location or None,
                     country=infer_country(location),
                     seniority=infer_seniority(title),
-                    work_mode=work_mode,
+                    work_mode=infer_work_mode(f"{location} {workplace_type}"),
                 )
             )
         except Exception as exc:
             logger.warning("[%s] Skipping malformed posting: %s", COMPANY_SLUG, exc)
-            continue
 
     logger.info("[%s] Parsed %d valid roles", COMPANY_SLUG, len(roles))
     return roles

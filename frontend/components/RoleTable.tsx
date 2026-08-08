@@ -120,7 +120,7 @@ export function RoleTable({
               active={sortKey === "lastSeenAt"}
               direction={sortDirection}
               icon={<IconCalendarDaysOutline18 size={14} />}
-              label="Posted"
+              label="Last seen"
               onClick={() => setSort("lastSeenAt")}
             />
           </tr>

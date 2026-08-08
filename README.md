@@ -4,20 +4,21 @@ AI-Insights is a platform designed to aggregate, track, and analyze open roles a
 
 ## Architecture
 
-The project is structured into two main components:
+The project now uses a simpler production shape:
 
-- **Frontend**: A Next.js web application that visualizes job data, trends, and analytics.
-- **Backend**: A FastAPI service responsible for executing automated data ingestion pipelines from various job boards (Greenhouse, Lever, Ashby, etc.) and exposing REST endpoints.
-- **Database**: Supabase (PostgreSQL) is utilized for persistent storage of job listings, historical role snapshots, and scraping logs.
+- **Frontend**: A Next.js web application that reads Supabase directly on the server.
+- **Database**: Supabase (PostgreSQL) stores roles, historical snapshots, and precomputed read models.
+- **Ingestion**: Python scraping and maintenance scripts run locally on a weekly cadence, then refresh the Supabase data and trigger frontend revalidation.
 
 ## Repository Structure
 
 - `/frontend` - Contains the Next.js application, UI components, and client-side logic.
-- `/backend` - Contains the FastAPI application, database connectors, and scraper utilities.
+- `/backend` - Contains the local scraping, classification, and read-model generation scripts.
+- `/supabase/migrations` - Contains SQL for the precomputed read models used by the frontend.
 
 ## Local Development
 
-### Backend Setup
+### Local Ingestion Setup
 
 1. Navigate to the backend directory:
    ```bash
@@ -34,9 +35,9 @@ The project is structured into two main components:
    ```
 4. Configure environment variables:
    Copy `.env.example` to `.env` and provide your Supabase credentials.
-5. Start the API server:
+5. Run the weekly refresh pipeline:
    ```bash
-   uvicorn main:app --reload
+   python run_weekly_refresh.py
    ```
 
 ### Frontend Setup
@@ -49,7 +50,12 @@ The project is structured into two main components:
    ```bash
    npm install
    ```
-3. Start the development server:
+3. Configure environment variables:
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY` (or legacy `SUPABASE_KEY`)
+   - `REVALIDATE_SECRET`
+   - `NEXT_PUBLIC_LOGO_DEV_TOKEN`
+4. Start the development server:
    ```bash
    npm run dev
    ```

@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
 from db import supabase
+from read_models import rebuild_read_models
 import scraper.anthropic as anthropic_scraper
 import scraper.openai as openai_scraper
 import scraper.perplexityai as perplexityai_scraper
@@ -20,6 +21,7 @@ import scraper.coreweave as coreweave_scraper
 import scraper.mistral as mistral_scraper
 import scraper.nvidia as nvidia_scraper
 import scraper.amazon as amazonagi_scraper
+from signals import build_company_signals
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -268,6 +270,29 @@ def _scrape_one(company_slug: str, scraper_module, scraped_at: str) -> dict:
 
         # Upsert each role into the roles table
         if roles:
+            existing_first_seen: dict[str, str] = {}
+            offset = 0
+            while True:
+                batch = (
+                    supabase.table("roles")
+                    .select("source_url,first_seen_at")
+                    .eq("company_slug", company_slug)
+                    .range(offset, offset + 999)
+                    .execute()
+                    .data
+                    or []
+                )
+                existing_first_seen.update(
+                    {
+                        row["source_url"]: row["first_seen_at"]
+                        for row in batch
+                        if row.get("source_url") and row.get("first_seen_at")
+                    }
+                )
+                if len(batch) < 1000:
+                    break
+                offset += 1000
+
             rows = [
                 {
                     "company_slug": company_slug,
@@ -278,7 +303,7 @@ def _scrape_one(company_slug: str, scraper_module, scraped_at: str) -> dict:
                     "seniority": role.seniority,
                     "work_mode": role.work_mode,
                     "source_url": role.source_url,
-                    "first_seen_at": scraped_at,
+                    "first_seen_at": existing_first_seen.get(role.source_url, scraped_at),
                     "last_seen_at": scraped_at,
                 }
                 for role in roles
@@ -333,6 +358,23 @@ def _scrape_one(company_slug: str, scraper_module, scraped_at: str) -> dict:
         return {"company": company_slug, "status": "error", "error": str(exc)}
 
 
+def run_scrape_pipeline() -> dict:
+    scraped_at = datetime.now(timezone.utc).isoformat()
+    summary: list[dict] = []
+
+    for slug, module in SCRAPERS:
+        summary.append(_scrape_one(slug, module, scraped_at))
+
+    read_model_summary = rebuild_read_models(scraped_at)
+    clear_response_cache()
+    revalidate_frontend_cache()
+    return {
+        "scraped_at": scraped_at,
+        "results": summary,
+        "read_models": read_model_summary,
+    }
+
+
 @app.post("/scrape/run")
 def trigger_scrape(authorization: str = Header(None)):
     """
@@ -345,17 +387,7 @@ def trigger_scrape(authorization: str = Header(None)):
     if scrape_secret and authorization != f"Bearer {scrape_secret}":
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    scraped_at = datetime.now(timezone.utc).isoformat()
-    summary: list[dict] = []
-
-    # Run scrapers sequentially to avoid macOS [Errno 35] socket saturation
-    # that occurs when 6+ outbound connections fire simultaneously.
-    for slug, module in SCRAPERS:
-        summary.append(_scrape_one(slug, module, scraped_at))
-
-    clear_response_cache()
-    revalidate_frontend_cache()
-    return {"scraped_at": scraped_at, "results": summary}
+    return run_scrape_pipeline()
 
 
 @app.post("/admin/reclassify")
@@ -941,187 +973,12 @@ def get_unusual_signals(
     strong strategic signal (e.g. tutors = RLHF trainers).
     Returns the top detected signal per company slug.
     """
-    # Before adding or changing signal copy, follow SIGNAL_WRITING_PROMPT.md.
-    PATTERNS: list[dict] = [
-        # Science / RLHF trainers (xAI, Anthropic)
-        {
-            "keywords": ["tutor", "math", "biolog", "chemist", "physic", "earth sci", "geolog", "astro"],
-            "label": "Training AI on science",
-            "description": "Hiring scientists to teach the model, betting on scientific reasoning as a competitive edge",
-        },
-        # Data labeling / annotation
-        {
-            "keywords": [
-                "annotator", "labeler", "data label", "rater", "content reviewer",
-                "quality auditor", "data quality", "data services", "data associate", "training specialist",
-            ],
-            "label": "Building better training data",
-            "description": "More human reviewers means a smarter model, investing in quality, not just speed",
-            "by_company": {
-                "amazonagi": {
-                    "label": "Scaling AGI data operations",
-                    "description": "Amazon AGI is hiring data quality, auditing, and training roles, signaling a large human feedback operation behind model improvement",
-                },
-            },
-        },
-        # Safety / red team
-        {
-            "keywords": ["red team", "redteam", "adversarial", "jailbreak", "safety evaluator"],
-            "label": "Testing for weaknesses",
-            "description": "Finding flaws before enterprise clients do, reducing liability and unlocking bigger deals",
-        },
-        # Trust, policy, ethics
-        {
-            "keywords": [
-                "ethicist", "responsible ai", "trust & safety", "trust and safety",
-                "content policy", "community policy",
-            ],
-            "label": "Avoiding regulatory trouble",
-            "description": "Building guardrails needed to scale without getting fined or shut down",
-        },
-        # Government / regulatory affairs (OpenAI, Anthropic)
-        {
-            "keywords": [
-                "policy", "government affairs", "regulatory affairs",
-                "public affairs", "legislation", "government relation",
-            ],
-            "label": "Going after government contracts",
-            "description": "Government AI contracts are among the largest deals available, and this is the sales team for that",
-        },
-        # Forward-deployed AI / sovereign enterprise rollouts (Mistral)
-        {
-            "keywords": [
-                "deployment strategist", "forward deployed", "sovereign institution",
-                "critical and sovereign", "ai4engineering", "applied ai",
-            ],
-            "label": "Building an AI deployment consultancy",
-            "description": "Hiring deployment strategists and forward-deployed AI engineers signals a services layer around model implementation",
-            "by_company": {
-                "anthropic": {
-                    "label": "Pushing Claude into enterprises",
-                    "description": "Anthropic is hiring applied AI architects and industry account roles, signaling a stronger push to turn Claude into deployed enterprise workflows",
-                },
-                "openai": {
-                    "label": "Embedding AI inside customers",
-                    "description": "OpenAI is hiring forward-deployed and deployment engineers, signaling hands-on enterprise and government implementation, not just API access",
-                },
-                "perplexityai": {
-                    "label": "Taking AI search into enterprise workflows",
-                    "description": "Perplexity is hiring applied AI and enterprise experience roles, signaling a move from consumer search toward workplace deployment",
-                },
-                "mistral": {
-                    "label": "Building an AI deployment consultancy",
-                    "description": "Mistral is hiring deployment strategists and forward-deployed AI engineers, signaling a services layer around its models that competes with Accenture and PwC for enterprise AI implementation",
-                },
-            },
-        },
-        # Legal / compliance
-        {
-            "keywords": ["lawyer", "attorney", "legal counsel", "general counsel", "compliance", "legal advisor"],
-            "label": "Legal expansion",
-            "description": "Scaling legal capacity, a prerequisite for large enterprise deals and regulated markets",
-        },
-        # Infrastructure / data center ops (Nvidia, OpenAI Stargate, CoreWeave)
-        {
-            "keywords": [
-                "data center", "datacenter", "ai infrastructure", "dgx cloud",
-                "cluster", "facilities", "site reliability", "power",
-                "mechanical engineer", "electrical engineer", "hvac",
-            ],
-            "label": "Competing in AI infrastructure",
-            "description": "Data center, power, and AI infrastructure roles signal a move beyond chips into full-stack AI compute, competing with hyperscalers like Amazon and Google",
-            "by_company": {
-                "coreweave": {
-                    "label": "Expanding AI cloud capacity",
-                    "description": "CoreWeave is hiring data center, power, and infrastructure roles, signaling continued expansion of the physical cloud capacity AI labs depend on",
-                },
-            },
-        },
-        # Creative domain experts (OpenAI Sora, image gen models)
-        {
-            "keywords": [
-                "filmmaker", "cinematograph", "video producer", "creative director",
-                "concept artist", "animator", "storyboard", "photographer",
-            ],
-            "label": "Expanding into video and image AI",
-            "description": "Hiring creatives to build visual AI means moving beyond text into a much bigger market",
-        },
-        # Medical / healthcare
-        {
-            "keywords": ["doctor", "physician", "nurse", "clinical", "radiolog", "patholog"],
-            "label": "Entering healthcare",
-            "description": "Hiring doctors and clinicians points toward healthcare AI, a market with strong pricing and high switching costs",
-        },
-        # Economics research
-        {
-            "keywords": ["economist", "economic research", "market design", "welfare"],
-            "label": "Pricing and monetization strategy",
-            "description": "Hiring economists to design how they charge signals serious work on revenue models",
-        },
-        # Alignment / safety research (distinct from red team)
-        {
-            "keywords": ["alignment", "interpretab", "mechanistic", "scalable oversight"],
-            "label": "Betting on long-term AI safety",
-            "description": "Deep research into keeping AI predictable and under control signals how seriously they take what comes next",
-        },
-        # Robotics / physical AI
-        {
-            "keywords": ["robotics", "mechatronics", "actuator", "embodied", "manipulation"],
-            "label": "Moving AI into the physical world",
-            "description": "Robots and hardware expand the company from software into physical products with high barriers to copy",
-        },
-        # Aviation / aerospace
-        {
-            "keywords": ["pilot", "aviation", "aerospace", "flight"],
-            "label": "Defense and simulation",
-            "description": "Aviation hires point to government defense contracts or building physical-world simulation data",
-        },
-    ]
-
     roles_data = fetch_all_roles(
         "company_slug, title",
         effective_role_cutoff(days, company_slug=company_slug, country=country),
         company_slug,
         country,
     )
-
-    company_titles: dict[str, list[tuple[str, str]]] = {}
-    for r in roles_data:
-        slug = r.get("company_slug") or ""
-        title = r.get("title") or ""
-        company_titles.setdefault(slug, []).append((title, title.lower()))
-
-    result: dict[str, dict] = {}
-    for slug, titles in company_titles.items():
-        best: dict | None = None
-        for pattern in PATTERNS:
-            keywords = pattern["keywords"]
-            matched = [
-                original
-                for original, lowered in titles
-                if any(keyword in lowered for keyword in keywords)
-            ]
-            if len(matched) >= 2:
-                if best is None or len(matched) > best["count"]:
-                    company_override = pattern.get("by_company", {}).get(slug, {})
-                    label = company_override.get("label", pattern["label"])
-                    description = company_override.get("description", pattern["description"])
-                    evidence = sorted(
-                        set(matched),
-                        key=lambda title: (
-                            -sum(keyword in title.lower() for keyword in keywords if keyword != "tutor"),
-                            -sum(keyword in title.lower() for keyword in keywords),
-                            len(title),
-                            title,
-                        ),
-                    )[:3]
-                    best = {
-                        "label": label,
-                        "count": len(matched),
-                        "description": description,
-                        "evidence": evidence,
-                    }
-        if best:
-            result[slug] = best
+    result = build_company_signals(roles_data)
 
     return set_cached_response(cache_key, 600, result)
