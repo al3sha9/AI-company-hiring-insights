@@ -1,15 +1,22 @@
 import { NextResponse } from "next/server";
-import { latestScrapeAt } from "@/lib/supabase-server";
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (process.env.VERCEL
+    ? "https://ai-company-hiring-insights.vercel.app"
+    : "http://localhost:8000");
 
 export async function GET() {
   const startedAt = Date.now();
 
   try {
-    const scrapedAt = await latestScrapeAt();
+    const response = await fetch(`${API_URL}/health`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
     return NextResponse.json({
-      ok: Boolean(scrapedAt),
-      status: scrapedAt ? 200 : 503,
-      scrapedAt,
+      ok: response.ok,
+      status: response.status,
       durationMs: Date.now() - startedAt,
     });
   } catch (error) {
