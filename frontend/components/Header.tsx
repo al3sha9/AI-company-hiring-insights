@@ -15,6 +15,16 @@ import { Container } from "@/components/Container";
 import { Logo } from "@/components/Logo";
 import { NavLink } from "@/components/NavLink";
 
+const navigation = [
+  { label: "AI Insights", href: "https://ai-insights.100xbetter.ai/", external: false },
+  { label: "Compare AI subscription plans", href: "https://aimodels.100xbetter.ai/", external: true },
+  { label: "Find a model", href: "https://aimodels.100xbetter.ai/aiplans", external: true },
+  { label: "Stock Valuation Tool", href: "https://stockvaluecalculator.100xbetter.ai/", external: true },
+  { label: "About", href: "https://100xbetter.ai/about", external: true },
+  { label: "Contact", href: "https://100xbetter.ai/contact", external: true },
+  { label: "AI training", href: "https://100xbetter.ai/ai-training", external: true },
+];
+
 function MobileNavLink({
   href,
   children,
@@ -84,46 +94,16 @@ function MobileNavigation() {
         transition
         className="absolute inset-x-0 top-full mt-4 flex origin-top flex-col rounded-2xl bg-white p-4 text-lg tracking-tight text-slate-900 ring-1 shadow-xl ring-slate-900/5 data-closed:scale-95 data-closed:opacity-0 data-enter:duration-75 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
       >
-        <MobileNavLink
-          href="https://ai-insights.100xbetter.ai/"
-        >
-          AI Insights
-        </MobileNavLink>
-        <MobileNavLink
-          href="https://stockvaluecalculator.100xbetter.ai/"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Stock Valuation Tool
-        </MobileNavLink>
-        <MobileNavLink
-          href="https://100xbetter.ai/ai-training"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          AI training
-        </MobileNavLink>
-        <MobileNavLink
-          href="https://100xbetter.ai/about"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          About
-        </MobileNavLink>
-        <MobileNavLink
-          href="https://100xbetter.ai/contact"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          contact
-        </MobileNavLink>
-        <MobileNavLink
-          href="https://course.100xbetter.ai/login"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Training Login
-        </MobileNavLink>
+        {navigation.map((item) => (
+          <MobileNavLink
+            href={item.href}
+            key={item.href}
+            rel={item.external ? "noopener noreferrer" : undefined}
+            target={item.external ? "_blank" : undefined}
+          >
+            {item.label}
+          </MobileNavLink>
+        ))}
       </PopoverPanel>
     </Popover>
   );
@@ -155,54 +135,24 @@ export function Header() {
       <Container>
         <nav className="relative z-50 flex justify-between">
           <div className="flex items-center md:gap-x-12">
-            <Link href="https://100xbetter.ai" className="100xbetter" aria-label="Home">
+            <Link href="https://100xbetter.ai/" className="100xbetter" aria-label="Home">
               <Logo className="h-16 w-auto" />
             </Link>
-            <div className="hidden items-center md:flex md:gap-x-5 lg:gap-x-6">
-              <NavLink
-                href="https://ai-insights.100xbetter.ai/"
-              >
-                AI Insights
-              </NavLink>
-              <NavLink
-                href="https://stockvaluecalculator.100xbetter.ai/"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Stock Valuation Tool
-              </NavLink>
-              <NavLink
-                href="https://100xbetter.ai/ai-training"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                AI training
-              </NavLink>
-              <NavLink
-                href="https://100xbetter.ai/about"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                About
-              </NavLink>
-              <NavLink
-                href="https://100xbetter.ai/contact"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                contact
-              </NavLink>
-              <NavLink
-                href="https://course.100xbetter.ai/login"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Training Login
-              </NavLink>
+            <div className="hidden items-center gap-x-1 lg:flex xl:gap-x-2">
+              {navigation.map((item) => (
+                <NavLink
+                  href={item.href}
+                  key={item.href}
+                  rel={item.external ? "noopener noreferrer" : undefined}
+                  target={item.external ? "_blank" : undefined}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
             </div>
           </div>
           <div className="flex items-center gap-x-5 md:gap-x-8">
-            <div className="-mr-1 md:hidden">
+            <div className="-mr-1 lg:hidden">
               <MobileNavigation />
             </div>
           </div>
