@@ -17,8 +17,8 @@ import { NavLink } from "@/components/NavLink";
 
 const navigation = [
   { label: "AI Insights", href: "https://ai-insights.100xbetter.ai/", external: false },
-  { label: "Compare AI subscription plans", href: "https://aimodels.100xbetter.ai/", external: true },
-  { label: "Find a model", href: "https://aimodels.100xbetter.ai/aiplans", external: true },
+  { label: "AI Plan Finder", href: "https://aimodels.100xbetter.ai/", external: true },
+  { label: "AI Model Finder", href: "https://aimodels.100xbetter.ai/ai-model-finder", external: true },
   { label: "Stock Valuation Tool", href: "https://stockvaluecalculator.100xbetter.ai/", external: true },
   { label: "About", href: "https://100xbetter.ai/about", external: true },
   { label: "Contact", href: "https://100xbetter.ai/contact", external: true },
