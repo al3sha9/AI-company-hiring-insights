@@ -1,6 +1,6 @@
 # AI-Insights
 
-AI-Insights is a platform designed to aggregate, track, and analyze open roles across leading artificial intelligence companies. By continuously monitoring career boards, the system provides real-time visibility into hiring trends and talent demands within the AI industry.
+AI-Insights is a platform designed to aggregate, track, and analyze open roles across leading artificial intelligence companies. By continuously monitoring career boards, the system provides real-time visibility into hiring trends and talent demands within the AI industry. More details on https://alishan.dev
 
 ## Architecture
 
